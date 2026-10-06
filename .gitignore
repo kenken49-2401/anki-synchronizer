@@ -1,0 +1,14 @@
+.venv/
+.env
+__pycache__/
+.pytest_cache/
+*.anki2*
+*.colpkg
+*.apkg
+secrets.env
+generated-secrets.env
+*.zip
+*.encrypted
+*.egg-info/
+build/
+dist/

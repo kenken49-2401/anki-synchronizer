@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: anki-chatgpt-free
+    runtime: python
+    plan: free
+    buildCommand: pip install --require-hashes -r requirements.txt
+    startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT --workers 1 --no-access-log
+    healthCheckPath: /health
+    autoDeploy: false
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.14
+      - key: TZ
+        value: Asia/Tokyo
+      - key: PUBLIC_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: DATA_ENCRYPTION_KEY
+        sync: false
+      - key: OAUTH_ENCRYPTION_KEY
+        sync: false
+      - key: JWT_SIGNING_KEY
+        sync: false
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      - key: ALLOWED_GITHUB_USER_ID
+        sync: false
+      - key: MCP_REDIRECT_URIS
+        sync: false
+      - key: ANKIWEB_HKEY
+        sync: false
+      - key: ANKIWEB_ENDPOINT
+        sync: false
