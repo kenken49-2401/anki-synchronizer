@@ -12,3 +12,8 @@ generated-secrets.env
 *.egg-info/
 build/
 dist/
+.dashboard.env
+.dashboard-data/
+snapshot.json
+playwright-report/
+test-results/

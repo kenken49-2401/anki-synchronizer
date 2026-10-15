@@ -20,7 +20,7 @@ requires = ["setuptools>=75"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-py-modules = ["engine", "storage", "server"]
+py-modules = ["engine", "storage", "server", "dashboard", "connector"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

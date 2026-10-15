@@ -1,0 +1,25 @@
+FROM python:3.12.14-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    DASHBOARD_DATA_DIR=/data \
+    TZ=Asia/Tokyo \
+    PORT=8000
+
+WORKDIR /app
+COPY requirements.txt ./requirements.txt
+RUN python -m pip install --require-hashes -r requirements.txt \
+    && groupadd --gid 10001 dashboard \
+    && useradd --uid 10001 --gid dashboard --no-create-home --shell /usr/sbin/nologin dashboard \
+    && mkdir /data \
+    && chown dashboard:dashboard /data \
+    && chmod 700 /data
+
+COPY dashboard.py ./dashboard.py
+COPY web/ ./web/
+RUN chmod -R a+rX /app
+USER 10001:10001
+VOLUME ["/data"]
+EXPOSE 8000
+CMD ["sh", "-c", "exec uvicorn dashboard:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1 --no-access-log"]

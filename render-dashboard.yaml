@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: anki-dashboard
+    runtime: python
+    plan: free
+    buildCommand: pip install --require-hashes -r requirements.txt
+    startCommand: uvicorn dashboard:app --host 0.0.0.0 --port $PORT --workers 1 --no-access-log
+    healthCheckPath: /api/health
+    autoDeploy: false
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.14
+      - key: TZ
+        value: Asia/Tokyo
+      - key: DASHBOARD_DATA_DIR
+        value: .dashboard-data
+      - key: DASHBOARD_PASSWORD
+        sync: false
+      - key: ANKI_UPLOAD_TOKEN
+        sync: false
+      - key: DASHBOARD_ENCRYPTION_KEY
+        sync: false
+      - key: DASHBOARD_PUBLIC_URL
+        sync: false

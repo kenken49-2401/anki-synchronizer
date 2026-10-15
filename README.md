@@ -1,5 +1,7 @@
 # ChatGPTから使う、無料枠向けAnki連携の試作
 
+**タグ別カード一覧・学習統計のWebアプリ「Anki Atlas」を追加しました。** AnkiConnect経由で自分のAnkiのカードと学習履歴を取り込み、認証付きのオンライン画面で確認できます。セットアップ・公開方法は [DASHBOARD.md](DASHBOARD.md) を参照してください。以下は従来のMCP試作の説明です。
+
 PCがオフでもChatGPTのカスタムMCPから文字カードを作成・検索・編集し、復習回答をAnkiに記録するためのコードです。Renderは必要なときに起動し、保存データとOAuthの接続情報はSupabaseに暗号化して置きます。生成と解説は会話中のChatGPTが担当するため、OpenAI APIキーは使いません。
 
 これは導入前の試作です。実際のRender、Supabase、GitHub OAuth、ChatGPT、および利用者のAnkiWebとの接続はまだ検証していません。Renderの無料インスタンスでの起動時間・メモリ・タイムアウトも公開後の確認が必要です。
