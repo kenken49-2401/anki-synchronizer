@@ -1,0 +1,38 @@
+name: Refresh dashboard from AnkiWeb
+
+"on":
+  schedule:
+    - cron: "17 */3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ankiweb-dashboard-sync
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    if: vars.ANKI_AUTO_SYNC_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: anki-sync
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Python and uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: 3.12.14
+          enable-cache: true
+      - name: Download AnkiWeb snapshot and refresh dashboard
+        env:
+          ANKIWEB_HKEY: ${{ secrets.ANKIWEB_HKEY }}
+          ANKIWEB_ENDPOINT: ${{ secrets.ANKIWEB_ENDPOINT }}
+          ANKI_UPLOAD_TOKEN: ${{ secrets.ANKI_UPLOAD_TOKEN }}
+          DASHBOARD_URL: ${{ vars.DASHBOARD_URL }}
+          ANKI_TIMEZONE: ${{ vars.ANKI_TIMEZONE || 'Asia/Tokyo' }}
+        run: uv run --frozen python cloud_sync.py

@@ -18,6 +18,7 @@ import time
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from card_media import rich, filename, raster, validate_media
 
 import httpx
 
@@ -182,6 +183,7 @@ def export_snapshot(
     expected_profile: str | None = None,
     timezone: str = "Asia/Tokyo",
     query: str = "",
+    include_media: bool = True,
 ) -> dict[str, Any]:
     """Export card contents and complete review history using read-only API calls.
 
@@ -195,6 +197,7 @@ def export_snapshot(
     cards: list[dict[str, Any]] = []
     reviews: list[dict[str, Any]] = []
     review_ids: set[int] = set()
+    media = {}
     with AnkiConnect(endpoint, api_key) as anki:
         profile = anki.active_profile()
         if expected_profile is not None and profile != expected_profile:
@@ -256,6 +259,32 @@ def export_snapshot(
                         "time_ms": _integer(review.get("time"), "学習時間", minimum=0),
                         "type": _integer(review.get("type"), "学習種別", minimum=0, maximum=5),
                     })
+        if include_media:
+            names = set()
+            for card in cards:
+                for side in ("front", "back"):
+                    _, refs = rich(card[side])
+                    names.update(refs)
+            if len(names) > 500:
+                raise ConnectorError("画像数が500件を超えました。--query または --no-media を使ってください。")
+            import base64
+            for name in sorted(names):
+                if filename(name) != name:
+                    continue
+                encoded = anki.call("retrieveMediaFile", filename=name)
+                if encoded is False or encoded is None:
+                    continue
+                try:
+                    if not isinstance(encoded, str) or len(encoded) > 2796204:
+                        raise ValueError()
+                    data = base64.b64decode(encoded, validate=True)
+                    mime = raster(data)
+                    if not mime:
+                        continue
+                    media[name] = {"mime": mime, "data": encoded}
+                    validate_media(media)
+                except ValueError:
+                    raise ConnectorError("画像の形式または容量が制限を超えています。--no-media も利用できます。") from None
         if anki.active_profile() != profile:
             raise ConnectorError("取得中に Anki のプロファイルが変わりました。送信を中止しました。")
     snapshot = {
@@ -265,6 +294,8 @@ def export_snapshot(
         "cards": cards,
         "reviews": sorted(reviews, key=lambda review: review["id"]),
     }
+    if media:
+        snapshot["media"] = media
     _encode_snapshot(snapshot)
     return snapshot
 
@@ -330,6 +361,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--profile", help="Anki で既に開いているプロファイル名（不一致なら停止）")
     parser.add_argument("--timezone", default="Asia/Tokyo")
     parser.add_argument("--query", default="", help="Anki の検索条件（空文字は全カード）")
+    parser.add_argument("--no-media", action="store_true", help="画像を取得しない")
     parser.add_argument("--watch", type=int, metavar="SECONDS", help="指定秒数ごとに繰り返す（最小 30 秒）")
     parser.add_argument("--output", help="送信に加えて、または送信せずに JSON をローカル保存")
     args = parser.parse_args(argv)
@@ -351,6 +383,7 @@ def main(argv: list[str] | None = None) -> int:
                     expected_profile=args.profile,
                     timezone=args.timezone,
                     query=args.query,
+                    include_media=not args.no_media,
                 )
                 if args.output:
                     save_snapshot(args.output, snapshot)

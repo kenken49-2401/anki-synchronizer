@@ -322,3 +322,50 @@ def test_public_origin_is_read_from_environment(config, monkeypatch):
     monkeypatch.setenv("DASHBOARD_ENCRYPTION_KEY", config.encryption_key)
     monkeypatch.setenv("DASHBOARD_PUBLIC_URL", ORIGIN)
     assert DashboardConfig.from_env().public_url == ORIGIN
+
+
+def test_rich_cards_media_authentication_and_cloud_preservation(config):
+    import base64
+    import hashlib
+    # Real one-pixel PNG fixture, no private card content.
+    png = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWQAAAABJRU5ErkJggg==')
+    media_id = hashlib.sha256(png).hexdigest()
+    data = snapshot()
+    data['media'] = {'diagram.png': {'mime': 'image/png', 'data': base64.b64encode(png).decode()}}
+    data['cards'][0]['front'] = '<p>C<sub>2</sub>H<sub>4</sub></p><img src="diagram.png" onerror="alert(1)"><img src="https://evil.example/a.png"><script>secret</script>'
+    data['cards'][0]['back'] = data['cards'][0]['front'] + '<hr id="answer"><b>Polymer</b>'
+    async def run():
+        async with client_for(config) as client:
+            headers = {'Authorization': f'Bearer {TOKEN}'}
+            assert (await client.post('/api/snapshot', json=data, headers=headers)).status_code == 200
+            assert (await client.get('/api/media/' + media_id)).status_code == 401
+            await login(client)
+            result = (await client.get('/api/snapshot')).json()['snapshot']
+            assert 'media' not in result
+            card = result['cards'][0]
+            assert '<sub>2</sub>' in card['front_html']
+            assert 'onerror' not in card['front_html'] and 'evil.example' not in card['front_html'] and 'secret' not in card['front_html']
+            assert card['back_html'] == '<b>Polymer</b>'
+            image = await client.get('/api/media/' + media_id)
+            assert image.content == png and image.headers['content-type'] == 'image/png'
+            assert image.headers['cache-control'] == 'no-store'
+            data.pop('media')
+            data['source']['kind'] = 'ankiweb'
+            assert (await client.post('/api/snapshot', json=data, headers=headers)).status_code == 200
+            assert (await client.get('/api/media/' + media_id)).content == png
+            data['cards'][0]['front'] = 'No image now'
+            data['cards'][0]['back'] = 'Answer'
+            assert (await client.post('/api/snapshot', json=data, headers=headers)).status_code == 200
+            assert (await client.get('/api/media/' + media_id)).status_code == 404
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize('attachment', [
+    {'mime': 'image/svg+xml', 'data': 'PHN2Zz48L3N2Zz4='},
+    {'mime': 'image/png', 'data': 'invalid base64!'},
+])
+def test_rejects_unsafe_media(attachment):
+    data = snapshot()
+    data['media'] = {'image.png': attachment}
+    with pytest.raises(ValueError):
+        validate_snapshot(data)

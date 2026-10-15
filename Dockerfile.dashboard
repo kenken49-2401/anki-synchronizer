@@ -16,7 +16,7 @@ RUN python -m pip install --require-hashes -r requirements.txt \
     && chown dashboard:dashboard /data \
     && chmod 700 /data
 
-COPY dashboard.py ./dashboard.py
+COPY dashboard.py card_media.py ./
 COPY web/ ./web/
 RUN chmod -R a+rX /app
 USER 10001:10001

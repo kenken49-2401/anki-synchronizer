@@ -144,6 +144,20 @@ function demoSnapshot() {
       "医学",
     ],
   ];
+  seed.unshift(
+    [
+      "化学::高分子",
+      "エチレンが付加重合すると何になる？",
+      "ポリエチレン。二重結合が開いて鎖状につながる。",
+      "化学",
+    ],
+    [
+      "化学::高分子",
+      "ポリエステルの主鎖に含まれる結合は？",
+      "エステル結合（−CO−O−）。",
+      "化学",
+    ],
+  );
   const cards = seed.map(([tag, front, back, deck], i) => ({
     id: 1000 + i,
     note_id: 2000 + i,
@@ -159,6 +173,10 @@ function demoSnapshot() {
     due: 0,
     suspended: false,
   }));
+  cards[0].front_html =
+    "<p>エチレン C<sub>2</sub>H<sub>4</sub> が付加重合すると何になる？</p>";
+  cards[0].back_html =
+    "<p><strong>ポリエチレン</strong></p><p>n CH<sub>2</sub>＝CH<sub>2</sub> → ［−CH<sub>2</sub>−CH<sub>2</sub>−］<sub>n</sub></p>";
   const reviews = [];
   const now = new Date();
   for (let day = 83; day >= 0; day--) {
@@ -391,12 +409,44 @@ function overview() {
   );
 }
 
+// Apply the same small formatting allowlist defensively in the browser.
+function cardHTML(card, side) {
+  if (!card[side + "_html"]) return esc(card[side] || "（テキストなし）");
+  const template = document.createElement("template");
+  template.innerHTML = card[side + "_html"];
+  const allowed = new Set(
+    "P DIV SPAN BR HR STRONG B EM I U S SUB SUP UL OL LI TABLE THEAD TBODY TR TH TD H1 H2 H3 H4 BLOCKQUOTE PRE CODE IMG".split(
+      " ",
+    ),
+  );
+  for (const node of [...template.content.querySelectorAll("*")]) {
+    if (!allowed.has(node.tagName)) {
+      node.replaceWith(document.createTextNode(node.textContent));
+      continue;
+    }
+    const src = node.getAttribute("src");
+    const alt = node.getAttribute("alt");
+    for (const attribute of [...node.attributes])
+      node.removeAttribute(attribute.name);
+    if (node.tagName === "IMG") {
+      if (!/^\.\/api\/media\/[a-f0-9]{64}$/.test(src || "")) {
+        node.remove();
+        continue;
+      }
+      node.setAttribute("src", src);
+      node.setAttribute("alt", alt || "カードの図");
+      node.setAttribute("loading", "lazy");
+    }
+  }
+  return template.innerHTML;
+}
+
 function cardsView() {
   const s = state.stats;
   return (
     heading(
       "EXPLORE YOUR KNOWLEDGE",
-      "タグでつながる、カードたち。",
+      "カードを、じっくり読み返す。",
       "同じテーマを並べて、知識をひとつのまとまりに。",
       '<button class="button subtle" id="export-cards">' +
         icon("download", 17) +
@@ -431,7 +481,7 @@ function cardResults() {
             const accuracy = s?.count
               ? Math.round((s.correct / s.count) * 100)
               : null;
-            return `<article class="study-card"><div class="study-card-main"><span class="card-index">${String(state.page * pageSize + i + 1).padStart(2, "0")}</span><div class="card-content"><div class="card-meta"><span>${esc(c.deck)}</span><span>·</span><span>${esc(c.model)}</span>${c.suspended ? '<span class="suspended">休止中</span>' : ""}</div><h3>${esc(c.front || "（テキストなし）")}</h3><div class="card-tags">${c.tags.map((t) => `<button data-tag="${esc(t)}"># ${esc(t.replaceAll("::", " / "))}</button>`).join("")}</div></div><div class="card-accuracy"><strong class="${accuracy === null ? "muted" : accuracy < 70 ? "needs-practice" : ""}">${accuracy === null ? "—" : accuracy + "%"}</strong><span>${s?.count || 0} 回回答</span></div></div><button class="answer-toggle" data-answer="${c.id}" aria-expanded="${state.expanded.has(c.id)}" aria-controls="answer-${c.id}">${state.expanded.has(c.id) ? "答えを隠す" : "答えを見る"}${icon("chevron", 13)}</button><div class="answer-content" id="answer-${c.id}" ${state.expanded.has(c.id) ? "" : "hidden"}><span>ANSWER</span><p>${esc(c.back || "（テキストなし）")}</p>${
+            return `<article class="study-card"><div class="study-card-main"><span class="card-index">${String(state.page * pageSize + i + 1).padStart(2, "0")}</span><div class="card-content"><div class="card-meta"><span>${esc(c.deck)}</span><span>·</span><span>${esc(c.model)}</span>${c.suspended ? '<span class="suspended">休止中</span>' : ""}</div><div class="card-question rich-card">${cardHTML(c, "front")}</div><div class="card-tags">${c.tags.map((t) => `<button data-tag="${esc(t)}"># ${esc(t.replaceAll("::", " / "))}</button>`).join("")}</div></div><div class="card-accuracy"><strong class="${accuracy === null ? "muted" : accuracy < 70 ? "needs-practice" : ""}">${accuracy === null ? "—" : accuracy + "%"}</strong><span>${s?.count || 0} 回回答</span></div></div><button class="answer-toggle" data-answer="${c.id}" aria-expanded="${state.expanded.has(c.id)}" aria-controls="answer-${c.id}">${state.expanded.has(c.id) ? "答えを隠す" : "答えを見る"}${icon("chevron", 13)}</button><div class="answer-content" id="answer-${c.id}" ${state.expanded.has(c.id) ? "" : "hidden"}><span>ANSWER</span><div class="rich-card">${cardHTML(c, "back")}</div>${
               Object.entries(c.fields || {}).length > 2
                 ? `<details><summary>すべてのフィールド</summary>${Object.entries(
                     c.fields,
@@ -477,7 +527,7 @@ function settings() {
       "いつものAnkiと、つなぐ。",
       "アカウントは、PCのAnkiで開いているプロフィールから接続します。",
     ) +
-    `<div class="settings-grid"><section class="panel"><div class="panel-title"><div><h2>接続の状態</h2><p>あなたのカードは、あなたのためだけに。</p></div><span class="pill ${state.snapshot ? "connected" : ""}">${state.demo ? "デモ" : state.snapshot ? "受信済み" : "未接続"}</span></div><dl class="connection-info"><div><dt>プロフィール</dt><dd>${esc(state.snapshot?.source.profile || "未設定")}</dd></div><div><dt>最終データ受信</dt><dd>${esc(syncLabel())}</dd></div><div><dt>接続方式</dt><dd>AnkiConnect → クラウド</dd></div></dl><div class="info-box">PCがスリープ中も、最後に受信したカードと統計を閲覧できます。新しいデータの取得には、Ankiと接続プログラムの起動が必要です。</div><label class="setting-label" for="timezone">集計タイムゾーン</label><select id="timezone"><option value="Asia/Tokyo" ${state.timezone === "Asia/Tokyo" ? "selected" : ""}>日本（Asia/Tokyo）</option><option value="UTC" ${state.timezone === "UTC" ? "selected" : ""}>UTC</option><option value="America/New_York" ${state.timezone === "America/New_York" ? "selected" : ""}>ニューヨーク</option><option value="Europe/London" ${state.timezone === "Europe/London" ? "selected" : ""}>ロンドン</option></select><p class="muted small">このブラウザーの表示設定として保存されます。</p></section><section class="panel setup-panel"><span class="eyebrow">CONNECT IN 3 STEPS</span><h2>接続は、あとからでも大丈夫。</h2><ol class="setup-steps"><li><span>1</span><div><h3>PCのAnkiを準備</h3><p>自分のAnkiプロフィールを開き、公式のAnkiConnectアドオン（2055492159）を追加します。AnkiWebのアカウントはAnki側で設定します。</p></div></li><li><span>2</span><div><h3>接続用の設定を用意</h3><p>公開先とPCに、同じ送信用トークンを設定します。秘密の設定ファイルはGitHubに公開しません。</p></div></li><li><span>3</span><div><h3>PCからデータを送信</h3><p>接続プログラムを起動すると、カードと学習履歴が届きます。Ankiのカードを書き換える操作は行いません。</p></div></li></ol><label class="setting-label" for="profile-name">接続するプロフィール名（任意）</label><input id="profile-name" type="text" maxlength="200" placeholder="例：User 1" value="${esc(profile)}"><p class="muted small">指定すると、接続先が違う場合に送信を止めます。</p><pre class="command" id="connector-command"></pre><button class="button subtle" id="copy-command">接続コマンドをコピー</button><p class="muted small">初回設定・公開手順はリポジトリの DASHBOARD.md を参照してください。</p></section></div>`
+    `<div class="settings-grid"><section class="panel"><div class="panel-title"><div><h2>接続の状態</h2><p>あなたのカードは、あなたのためだけに。</p></div><span class="pill ${state.snapshot ? "connected" : ""}">${state.demo ? "デモ" : state.snapshot ? "受信済み" : "未接続"}</span></div><dl class="connection-info"><div><dt>プロフィール</dt><dd>${esc(state.snapshot?.source.profile || "未設定")}</dd></div><div><dt>最終データ受信</dt><dd>${esc(syncLabel())}</dd></div><div><dt>接続方式</dt><dd>${state.snapshot?.source.kind === "ankiweb" ? "AnkiWeb → GitHub Actions" : "AnkiConnect → クラウド"}</dd></div></dl><div class="info-box">PC停止中の自動更新はGitHub Actionsで設定できます。学習した端末でAnkiWebへの同期を済ませてください。PC取り込みを使う場合はAnkiと接続プログラムの起動が必要です。</div><label class="setting-label" for="timezone">集計タイムゾーン</label><select id="timezone"><option value="Asia/Tokyo" ${state.timezone === "Asia/Tokyo" ? "selected" : ""}>日本（Asia/Tokyo）</option><option value="UTC" ${state.timezone === "UTC" ? "selected" : ""}>UTC</option><option value="America/New_York" ${state.timezone === "America/New_York" ? "selected" : ""}>ニューヨーク</option><option value="Europe/London" ${state.timezone === "Europe/London" ? "selected" : ""}>ロンドン</option></select><p class="muted small">このブラウザーの表示設定として保存されます。</p></section><section class="panel setup-panel"><span class="eyebrow">CONNECT IN 3 STEPS</span><h2>接続は、あとからでも大丈夫。</h2><ol class="setup-steps"><li><span>1</span><div><h3>PCのAnkiを準備</h3><p>自分のAnkiプロフィールを開き、公式のAnkiConnectアドオン（2055492159）を追加します。AnkiWebのアカウントはAnki側で設定します。</p></div></li><li><span>2</span><div><h3>接続用の設定を用意</h3><p>公開先とPCに、同じ送信用トークンを設定します。秘密の設定ファイルはGitHubに公開しません。</p></div></li><li><span>3</span><div><h3>PCからデータを送信</h3><p>接続プログラムを起動すると、カードと学習履歴が届きます。Ankiのカードを書き換える操作は行いません。</p></div></li></ol><label class="setting-label" for="profile-name">接続するプロフィール名（任意）</label><input id="profile-name" type="text" maxlength="200" placeholder="例：User 1" value="${esc(profile)}"><p class="muted small">指定すると、接続先が違う場合に送信を止めます。</p><pre class="command" id="connector-command"></pre><button class="button subtle" id="copy-command">接続コマンドをコピー</button><p class="muted small">PC取り込みは DASHBOARD.md、PC停止中の自動更新は ACTIONS_SETUP.md を参照してください。</p></section></div>`
   );
 }
 function command() {

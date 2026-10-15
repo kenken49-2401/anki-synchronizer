@@ -167,3 +167,7 @@ node --test tests/stats.test.mjs
 自分のPCとの実接続では、Ankiを起動 → 1回送信 → Webでタグと成績を確認 → サーバー再起動後に再確認、の順で検証します。デモの表示成功は、自分のアカウントとの同期成功を意味しません。
 
 今回の検証結果と未検証の範囲は [DASHBOARD_VERIFICATION.md](DASHBOARD_VERIFICATION.md) に記録しています。
+
+## PC停止中も更新する場合
+
+[GitHub ActionsによるAnkiWeb自動取り込み](ACTIONS_SETUP.md)を利用できます。こちらはAnkiConnectを使わず、AnkiWebからカード・タグ・復習履歴を3時間ごとにダウンロードします。Secretsと明示的な有効化が必要です。図はPCから最初に取り込み、以降のAnkiWeb更新では同じ名前の取り込み済み図を保持します。

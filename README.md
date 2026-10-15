@@ -166,3 +166,5 @@ SQLはPostgreSQL 17に `anon`、`authenticated`、`service_role`（BYPASSRLS）�
 依存ライブラリは `uv.lock` とハッシュ付き `requirements.txt` で固定しています。Ankiバックエンドの一部APIは安定した公開APIではないため、更新時は同期・スケジューラーのテストが必要です。
 
 AnkiはAGPL-3.0-or-laterです。この試作ソースも同じライセンスで提供します。デプロイ時は利用したソースと依存のライセンス条件を維持してください。
+
+PC停止中の定期取り込みは [GitHub Actions設定手順](ACTIONS_SETUP.md) を参照してください。

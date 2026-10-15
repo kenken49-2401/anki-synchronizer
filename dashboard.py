@@ -33,7 +33,8 @@ from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
+from card_media import validate_media, rich
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
@@ -168,13 +169,13 @@ def _integer(value: Any, label: str, low: int = 0, high: int = MAX_ID) -> int:
 
 
 def validate_snapshot(value: Any) -> dict[str, Any]:
-    """Validate the connector contract, copy supported fields, and strip HTML."""
+    """Validate snapshots and retain only safe text, formatting and raster media."""
     if not isinstance(value, dict) or type(value.get("schema_version")) is not int or value["schema_version"] != 1:
         raise SnapshotValidationError("schema_version must be 1")
     source = value.get("source")
-    if not isinstance(source, dict) or source.get("kind") != "ankiconnect":
-        raise SnapshotValidationError("source.kind must be ankiconnect")
-    safe_source = {"profile": _text(source.get("profile"), "source.profile", 256), "kind": "ankiconnect"}
+    if not isinstance(source, dict) or source.get("kind") not in ("ankiconnect", "ankiweb"):
+        raise SnapshotValidationError("source.kind must be ankiconnect or ankiweb")
+    safe_source = {"profile": _text(source.get("profile"), "source.profile", 256), "kind": source["kind"]}
     if "timezone" in source:
         zone = _text(source["timezone"], "source.timezone", 128)
         try:
@@ -197,6 +198,11 @@ def validate_snapshot(value: Any) -> dict[str, Any]:
         raise SnapshotValidationError(f"cards must be a list with at most {MAX_CARDS} entries")
     if not isinstance(reviews, list) or len(reviews) > MAX_REVIEWS:
         raise SnapshotValidationError(f"reviews must be a list with at most {MAX_REVIEWS} entries")
+    try:
+        media = validate_media(value.get("media", {}))
+    except ValueError as exc:
+        raise SnapshotValidationError(str(exc)) from None
+    referenced = set()
     safe_cards: list[dict[str, Any]] = []
     card_ids: set[int] = set()
     for card in cards:
@@ -230,6 +236,10 @@ def validate_snapshot(value: Any) -> dict[str, Any]:
             "due": _integer(card.get("due", 0), "card.due", -MAX_ID),
             "suspended": suspended,
         })
+        for side in ("front", "back"):
+            html, refs = rich(card[side], media, answer_only=side == "back")
+            safe_cards[-1][side + "_html"] = html
+            referenced.update(refs)
     safe_reviews: list[dict[str, int]] = []
     review_ids: set[int] = set()
     for review in reviews:
@@ -249,7 +259,11 @@ def validate_snapshot(value: Any) -> dict[str, Any]:
             "time_ms": _integer(review.get("time_ms"), "review.time_ms", 0, 86_400_000),
             "type": _integer(review.get("type"), "review.type", 0, 5),
         })
-    return {"schema_version": 1, "source": safe_source, "synced_at": synced_at, "cards": safe_cards, "reviews": safe_reviews}
+    result = {"schema_version": 1, "source": safe_source, "synced_at": synced_at, "cards": safe_cards, "reviews": safe_reviews}
+    used_media = {name: item for name, item in media.items() if name in referenced}
+    if used_media:
+        result["media"] = used_media
+    return result
 
 
 def _bad_constant(value: str) -> None:
@@ -444,7 +458,23 @@ def create_dashboard(config: DashboardConfig | None = None) -> Starlette:
             snapshot = await run_in_threadpool(store.read)
         except (OSError, InvalidToken, ValueError, UnicodeError, RecursionError):
             raise HTTPException(503, "Stored data cannot be read; check the storage and encryption key") from None
+        if snapshot:
+            snapshot = {k: v for k, v in snapshot.items() if k != "media"}
         return JSONResponse({"snapshot": snapshot})
+
+    async def get_media(request: Request) -> Response:
+        require_owner(request)
+        media_id = request.path_params["media_id"]
+        if not re.fullmatch(r"[a-f0-9]{64}", media_id):
+            raise HTTPException(404, "Image not found")
+        try:
+            snapshot = await run_in_threadpool(store.read)
+        except (OSError, InvalidToken, ValueError):
+            raise HTTPException(503, "Stored images cannot be read") from None
+        for item in (snapshot or {}).get("media", {}).values():
+            if item["id"] == media_id:
+                return Response(base64.b64decode(item["data"]), media_type=item["mime"])
+        raise HTTPException(404, "Image not found")
 
     async def upload_snapshot(request: Request) -> JSONResponse:
         authorization = request.headers.get("authorization", "")
@@ -453,6 +483,12 @@ def create_dashboard(config: DashboardConfig | None = None) -> Starlette:
             raise HTTPException(401, "A valid upload token is required")
         body = await _json_body(request, config.max_upload_bytes)
         try:
+            # A download-only AnkiWeb refresh has no media sync. Keep previously
+            # validated local attachments only while cards still reference them.
+            if isinstance(body, dict) and isinstance(body.get("source"), dict) and body["source"].get("kind") == "ankiweb" and "media" not in body:
+                previous = await run_in_threadpool(store.read)
+                if previous and previous.get("media"):
+                    body["media"] = previous["media"]
             snapshot = await run_in_threadpool(validate_snapshot, body)
             await run_in_threadpool(store.write, snapshot)
         except SnapshotValidationError as exc:
@@ -473,6 +509,7 @@ def create_dashboard(config: DashboardConfig | None = None) -> Starlette:
         Route("/api/login", login, methods=["POST"]),
         Route("/api/logout", logout, methods=["POST"]),
         Route("/api/snapshot", get_snapshot, methods=["GET"]),
+        Route("/api/media/{media_id}", get_media, methods=["GET"]),
         Route("/api/snapshot", upload_snapshot, methods=["POST"]),
     ]
     web = Path(__file__).resolve().parent / "web"

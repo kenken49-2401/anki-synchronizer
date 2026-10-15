@@ -330,3 +330,17 @@ def test_watch_retries_after_sleep_when_desktop_unavailable(monkeypatch, capsys)
     assert len(attempts) == 2
     assert sleeps == [30, 30]
     assert "同期待機" in capsys.readouterr().err
+
+
+def test_media_uses_read_only_retrieval_and_can_be_disabled(anki_mock):
+    import base64
+    responses, calls, _ = anki_mock
+    responses['cardsInfo'][0]['question'] = '<img src="diagram.png"><img src="https://evil.example/a.png">'
+    responses['retrieveMediaFile'] = base64.b64encode(b'\x89PNG\r\n\x1a\nexample').decode()
+    result = export_snapshot()
+    assert result['media']['diagram.png']['mime'] == 'image/png'
+    retrieved = [call for call in calls if call['action'] == 'retrieveMediaFile']
+    assert len(retrieved) == 1 and retrieved[0]['params'] == {'filename': 'diagram.png'}
+    calls.clear()
+    assert 'media' not in export_snapshot(include_media=False)
+    assert 'retrieveMediaFile' not in [call['action'] for call in calls]
