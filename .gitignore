@@ -18,5 +18,6 @@ snapshot.json
 playwright-report/
 test-results/
 .pages.env
+anki-tag-changes*.enc.json
 .private/
 site/

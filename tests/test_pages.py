@@ -202,3 +202,40 @@ def test_pages_setup_is_private_and_exclusive(tmp_path, capsys):
     assert password not in capsys.readouterr().out
     assert main(["--output", str(path)]) == 1
     assert path.read_text() == data
+
+
+def test_note_identity_survives_html_sanitization_and_seed_rebuild():
+    from note_identity import note_fingerprint
+    raw = with_image()
+    raw['cards'][0]['fields']['Back'] = '<b>答え</b><img src="molecule.png">'
+    data = pages_site.prepare_snapshot(raw)
+    c = data['cards'][0]
+    assert c['tag_identity'] == note_fingerprint(raw['cards'][0]['model'], raw['cards'][0]['fields'])
+    assert c['tag_identity'] != note_fingerprint(c['model'], c['fields'])
+    rebuilt = pages_site.prepare_snapshot(pages_site.restore_source(data))
+    assert rebuilt['cards'][0]['tag_identity'] == c['tag_identity']
+
+
+def test_browser_encrypted_tags_are_importable_by_python(tmp_path, monkeypatch):
+    if not shutil.which('node'):
+        pytest.skip('Node is needed for Web Crypto interoperability')
+    import tag_import
+    from test_tag_import import FakeAnki, package
+    data = package()
+    script = '''
+      import {readFileSync} from 'node:fs';
+      import {encryptData,importPassword} from './web/vault.mjs';
+      const input=JSON.parse(readFileSync(0,'utf8'));
+      process.stdout.write(JSON.stringify(await encryptData(input.data,await importPassword(input.password))));
+    '''
+    result = subprocess.run(['node', '--input-type=module', '-e', script],
+                            input=json.dumps({'data': data, 'password': PASSWORD}), text=True,
+                            capture_output=True, check=True, cwd=pages_site.ROOT)
+    assert '日本語::復習' not in result.stdout and PASSWORD not in result.stdout
+    path = tmp_path / 'anki-tag-changes.enc.json'
+    path.write_text(result.stdout)
+    fake = FakeAnki()
+    monkeypatch.setattr(tag_import, 'AnkiConnect', lambda *args: fake)
+    outcome = tag_import.import_tag_changes(path, PASSWORD, 'Main', apply=True, sync=True)
+    assert outcome['applied'] and outcome['synced']
+    assert set(fake.notes[1]['tags']) == {'existing', '日本語::復習', 'new'}

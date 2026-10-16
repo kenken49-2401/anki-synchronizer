@@ -4,7 +4,16 @@ import {
   fetchPackage,
   createMediaURLs,
   revokeMediaURLs,
+  encryptData,
+  decryptData,
+  MAX_PACKAGE,
 } from "./vault.mjs";
+import {
+  stageTags,
+  tagPayload,
+  validateChanges,
+  withTagChanges,
+} from "./tags.mjs";
 import {
   summarize,
   filterCards,
@@ -14,6 +23,7 @@ import {
   dayRange,
   deckTree,
   groupCards,
+  periodSummary,
 } from "./stats.mjs";
 
 const $ = (s) => document.querySelector(s);
@@ -79,6 +89,13 @@ const state = {
   busy: false,
   masterKey: null,
   mediaURLs: new Map(),
+  baseSnapshot: null,
+  tagChanges: new Map(),
+  tagBusy: false,
+  tagStorageError: false,
+  tagRecoveryError: false,
+  tagStoredVersion: null,
+  studyDays: 30,
 };
 try {
   new Intl.DateTimeFormat("ja-JP", { timeZone: state.timezone });
@@ -192,6 +209,7 @@ function demoSnapshot() {
     interval: 3 + i * 2,
     due: 0,
     suspended: false,
+    tag_identity: "0".repeat(64),
   }));
   cards[0].front_html =
     "<p>エチレン C<sub>2</sub>H<sub>4</sub> が付加重合すると何になる？</p>";
@@ -232,8 +250,127 @@ function toast(message) {
   toast.timer = setTimeout(() => el.classList.remove("visible"), 4000);
 }
 function setSnapshot(snapshot) {
-  state.snapshot = snapshot;
-  state.stats = summarize(snapshot, { timezone: state.timezone });
+  const visible = withTagChanges(snapshot, state.tagChanges);
+  state.baseSnapshot = snapshot;
+  state.snapshot = visible;
+  state.stats = summarize(visible, { timezone: state.timezone });
+}
+
+async function restoreTagDraft(snapshot) {
+  const saved = localStorage.getItem("atlas-tag-draft");
+  state.tagStoredVersion = saved;
+  if (!saved) return;
+  try {
+    if (saved.length > MAX_PACKAGE) throw new Error();
+    const data = validateChanges(
+      await decryptData(JSON.parse(saved), state.masterKey),
+    );
+    if (
+      data.source.kind !== snapshot.source.kind ||
+      data.source.profile !== snapshot.source.profile
+    )
+      throw new Error();
+    const changes = new Map(data.changes.map((c) => [c.note_id, c]));
+    withTagChanges(snapshot, changes);
+    state.tagChanges = changes;
+  } catch {
+    state.tagRecoveryError = true;
+  }
+}
+
+async function persistTags() {
+  if (state.demo) return;
+  if (state.tagRecoveryError)
+    throw new Error(
+      "以前の下書きを読み込めません。先に下書きの取り消しを選んでください。",
+    );
+  const checkVersion = () => {
+    if (localStorage.getItem("atlas-tag-draft") !== state.tagStoredVersion)
+      throw new Error(
+        "別のタブで下書きが更新されました。変更ファイルを保存してから読み直してください。",
+      );
+  };
+  checkVersion();
+  if (!state.tagChanges.size) {
+    localStorage.removeItem("atlas-tag-draft");
+    state.tagStoredVersion = null;
+    return;
+  }
+  const key = state.masterKey;
+  const data = await encryptData(
+    tagPayload(state.baseSnapshot, state.tagChanges),
+    key,
+  );
+  if (key !== state.masterKey) return;
+  checkVersion();
+  const encoded = JSON.stringify(data);
+  localStorage.setItem("atlas-tag-draft", encoded);
+  state.tagStoredVersion = encoded;
+}
+
+async function saveTagChange(changes) {
+  state.tagBusy = true;
+  state.tagChanges = changes;
+  try {
+    await persistTags();
+    state.tagStorageError = false;
+  } catch {
+    state.tagStorageError = true;
+  } finally {
+    state.tagBusy = false;
+  }
+  if (!state.baseSnapshot) return;
+  const scroll = window.scrollY;
+  setSnapshot(state.baseSnapshot);
+  shell();
+  window.scrollTo(0, scroll);
+  toast(
+    state.tagStorageError
+      ? "端末に保存できません。変更ファイルを書き出してください。"
+      : "タグの下書きを保存しました。Ankiへの反映にはPCで取り込んでください。",
+  );
+}
+
+function downloadFile(contents, name, type) {
+  const url = URL.createObjectURL(new Blob([contents], { type }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function exportTags() {
+  if (state.demo) {
+    toast("デモのタグはAnkiへ書き出せません。");
+    return;
+  }
+  if (state.tagRecoveryError) {
+    const saved = localStorage.getItem("atlas-tag-draft");
+    if (saved)
+      downloadFile(saved, "anki-tag-changes.enc.json", "application/json");
+    return;
+  }
+  if (state.tagBusy || !state.tagChanges.size) return;
+  state.tagBusy = true;
+  try {
+    const key = state.masterKey;
+    const data = await encryptData(
+      tagPayload(state.baseSnapshot, state.tagChanges),
+      key,
+    );
+    if (key !== state.masterKey) return;
+    downloadFile(
+      JSON.stringify(data),
+      "anki-tag-changes.enc.json",
+      "application/json",
+    );
+    toast("暗号化したタグ変更を保存しました。PCのAnkiへ取り込んでください。");
+  } catch {
+    toast("書き出しに失敗しました。もう一度お試しください。");
+  } finally {
+    state.tagBusy = false;
+  }
 }
 function dateLabel(value, options = {}) {
   return new Intl.DateTimeFormat("ja-JP", {
@@ -268,6 +405,7 @@ function login(message = "") {
       revokeMediaURLs(state.mediaURLs);
       state.mediaURLs = urls;
       state.masterKey = key;
+      await restoreTagDraft(snapshot);
       setSnapshot(snapshot);
       shell();
     } catch (err) {
@@ -296,6 +434,8 @@ function shell() {
         state.snapshot = null;
         state.stats = null;
         state.expanded.clear();
+        state.tagChanges.clear();
+        state.baseSnapshot = null;
       }
       location.assign(location.pathname);
     }),
@@ -462,6 +602,15 @@ function groupingSelect(id) {
     )
     .join("")}</select>`;
 }
+function tagSyncPanel(help = false) {
+  const count = state.tagChanges.size;
+  return `<section class="panel tag-sync-panel" aria-label="Ankiへ戻すタグ変更"><div><h2>Ankiへ戻すタグ変更 <span class="chip">${count} ノート</span></h2><p>${state.tagRecoveryError ? "以前の下書きを復元できません。以前の閲覧パスワードで開くか、ファイルを保存してから取り消してください。" : state.tagStorageError ? "端末への保存に失敗しました。ページを閉じる前に変更ファイルを保存してください。" : count ? "タグを追加しました。端末には暗号化して保存済みです。Ankiへの反映はPCでの取り込み後です。" : "カードを読んで付けたタグを、PCのAnkiへ取り込めます。"}</p></div><div class="tag-sync-actions"><button class="button primary small" data-export-tags ${!count && !state.tagRecoveryError ? "disabled" : ""}>${icon("download", 16)}${state.tagRecoveryError ? "下書きファイルを保存" : "タグ変更ファイルを保存"}</button><button class="button subtle small" data-clear-tags ${!count && !state.tagRecoveryError ? "disabled" : ""}>下書きを取り消す</button></div>${help ? '<p class="small muted">保存した暗号化ファイルをPCへ移し、DASHBOARD.mdの「追加したタグをAnkiへ戻す」に従って取り込んでください。閲覧パスワードで復号します。取り込み後は下書きを取り消し、次のPages更新を読み込んでください。</p>' : '<button class="text-button" data-go-settings>取り込み方法を見る →</button>'}</section>`;
+}
+
+function tagEditor(c) {
+  const pending = state.tagChanges.get(c.note_id)?.add_tags || [];
+  return `<details class="tag-editor"><summary>${icon("tag", 15)}タグを追加${pending.length ? `（未反映 ${pending.length}個）` : ""}</summary><form data-note-tags="${c.note_id}"><label for="tags-${c.id}">追加するタグ（空白区切り）</label><div class="tag-input-row"><input id="tags-${c.id}" name="tags" required maxlength="13000" placeholder="例：要復習 理解できた" autocomplete="off"><button class="button subtle small" type="submit">追加</button></div><p class="small muted">同じノートのカードにも付きます。既存タグは削除しません。</p></form>${pending.length ? `<p class="pending-tags">追加予定：${pending.map(esc).join(" / ")}</p><button class="text-button" data-undo-tags="${c.note_id}">このノートの追加を取り消す</button>` : ""}</details>`;
+}
 function cardsView() {
   const stats = state.stats;
   const deckOptions = deckTree(state.snapshot.cards)
@@ -479,6 +628,7 @@ function cardsView() {
         icon("download", 17) +
         "Markdownで保存</button>",
     ) +
+    tagSyncPanel() +
     `
   <div class="card-workspace"><aside class="tag-sidebar"><div class="tag-sidebar-heading">タグ一覧<span>${stats.tags.length}</span></div><button class="tag-filter ${!state.tag ? "selected" : ""}" data-tag="">${icon("cards", 17)}<span>すべてのカード</span><small>${stats.cards}</small></button>${stats.tags.map((g, i) => `<button class="tag-filter ${state.tag === g.tag ? "selected" : ""}" data-tag="${esc(g.tag)}"><span class="tag-bullet tag-color-${i % 4}">#</span><span title="${esc(g.tag)}">${esc(g.tag.replaceAll("::", " / "))}</span><small>${g.count}</small></button>`).join("")}</aside>
   <section class="cards-main"><div class="card-toolbar"><label class="search-input">${icon("search", 18)}<input id="search" type="search" placeholder="質問・答え・タグを検索" aria-label="カードを検索" value="${esc(state.query)}"></label>
@@ -495,7 +645,7 @@ function selectedCards() {
 function renderStudyCard(c, index) {
   const s = state.stats.byCard.get(c.id);
   const accuracy = s?.count ? Math.round((s.correct / s.count) * 100) : null;
-  return `<article class="study-card"><div class="study-card-main"><span class="card-index">${String(index).padStart(2, "0")}</span><div class="card-content"><div class="card-meta"><span>${esc(c.deck)}</span><span>·</span><span>${esc(c.model)}</span>${c.suspended ? '<span class="suspended">休止中</span>' : ""}</div><div class="card-question rich-card">${cardHTML(c, "front")}</div><div class="card-tags">${c.tags.map((t) => `<button data-tag="${esc(t)}"># ${esc(t.replaceAll("::", " / "))}</button>`).join("")}</div></div><div class="card-accuracy"><strong class="${accuracy === null ? "muted" : accuracy < 70 ? "needs-practice" : ""}">${accuracy === null ? "—" : accuracy + "%"}</strong><span>${s?.count || 0} 回回答</span></div></div><button class="answer-toggle" data-answer="${c.id}" aria-expanded="${state.expanded.has(c.id)}" aria-controls="answer-${c.id}">${state.expanded.has(c.id) ? "答えを隠す" : "答えを見る"}${icon("chevron", 13)}</button><div class="answer-content" id="answer-${c.id}" ${state.expanded.has(c.id) ? "" : "hidden"}><span>ANSWER</span><div class="rich-card">${cardHTML(c, "back")}</div>${
+  return `<article class="study-card"><div class="study-card-main"><span class="card-index">${String(index).padStart(2, "0")}</span><div class="card-content"><div class="card-meta"><span>${esc(c.deck)}</span><span>·</span><span>${esc(c.model)}</span>${c.suspended ? '<span class="suspended">休止中</span>' : ""}</div><div class="card-question rich-card">${cardHTML(c, "front")}</div><div class="card-tags">${c.tags.map((t) => `<button data-tag="${esc(t)}"># ${esc(t.replaceAll("::", " / "))}</button>`).join("")}</div></div><div class="card-accuracy"><strong class="${accuracy === null ? "muted" : accuracy < 70 ? "needs-practice" : ""}">${accuracy === null ? "—" : accuracy + "%"}</strong><span>${s?.count || 0} 回回答</span><span>累計 ${minutes(s?.time || 0)} 分</span></div></div>${tagEditor(c)}<button class="answer-toggle" data-answer="${c.id}" aria-expanded="${state.expanded.has(c.id)}" aria-controls="answer-${c.id}">${state.expanded.has(c.id) ? "答えを隠す" : "答えを見る"}${icon("chevron", 13)}</button><div class="answer-content" id="answer-${c.id}" ${state.expanded.has(c.id) ? "" : "hidden"}><span>ANSWER</span><div class="rich-card">${cardHTML(c, "back")}</div>${
     Object.entries(c.fields || {}).length > 2
       ? `<details><summary>すべてのフィールド</summary>${Object.entries(
           c.fields,
@@ -529,24 +679,71 @@ function cardResults() {
   <div class="pagination"><span>${cards.length ? state.page * pageSize + 1 : 0}–${Math.min((state.page + 1) * pageSize, cards.length)} / ${cards.length} 枚</span><div><button class="button subtle small" id="prev-page" ${state.page === 0 ? "disabled" : ""}>前へ</button><button class="button subtle small" id="next-page" ${(state.page + 1) * pageSize >= cards.length ? "disabled" : ""}>次へ</button></div></div>`;
 }
 function insights() {
-  const range = dayRange(30, new Date(), state.timezone).reverse();
+  const days = state.studyDays;
+  const range = dayRange(days || 30, new Date(), state.timezone).reverse();
+  const s = periodSummary(state.baseSnapshot, {
+    days,
+    timezone: state.timezone,
+  });
+  const total = periodSummary(state.baseSnapshot, {
+    days: 0,
+    timezone: state.timezone,
+  });
+  const period = days ? `過去${days}日間` : "全期間";
+  const stats = [
+    ["学習時間", `${minutes(s.time)} 分`, `${s.activeDays} 日学習`],
+    [
+      "回答回数",
+      `${s.count.toLocaleString()} 回`,
+      `${s.uniqueCards.toLocaleString()} 枚のカード`,
+    ],
+    [
+      "正解率",
+      percent(s.correct, s.count),
+      "Hard / Good / Easyを正解として集計",
+    ],
+    [
+      "平均回答時間",
+      s.count ? `${Math.round(s.averageMs / 100) / 10} 秒` : "—",
+      "1回の回答にかかった時間",
+    ],
+  ];
   return (
     heading(
-      "LOOK BACK, MOVE FORWARD",
-      "積み重ねが、力になる。",
-      "毎日の学習と、カードごとの得意・苦手を振り返りましょう。",
+      "YOUR ANKI STUDY DATA",
+      "Ankiの学習データ",
+      "Ankiで記録した学習時間・回数・得意と苦手を振り返れます。",
+      '<button class="button subtle" id="refresh">' +
+        icon("refresh", 17) +
+        "表示を更新</button>",
     ) +
-    metrics() +
-    `<section class="panel"><div class="panel-title"><div><h2>日ごとの学習記録</h2><p>過去30日間 · ${esc(state.timezone)}</p></div><span class="chip">回答履歴から集計</span></div><div class="table-scroll"><table class="daily-table"><thead><tr><th scope="col">日付</th><th scope="col">回答回数</th><th scope="col">正解率</th><th scope="col">学習時間</th><th scope="col">学習のリズム</th></tr></thead><tbody>${range
+    `<div class="study-controls"><label for="study-period">集計期間</label><select id="study-period">${[
+      [7, "過去7日間"],
+      [30, "過去30日間"],
+      [90, "過去90日間"],
+      [0, "全期間"],
+    ]
+      .map(
+        ([v, label]) =>
+          `<option value="${v}" ${days === v ? "selected" : ""}>${label}</option>`,
+      )
+      .join(
+        "",
+      )}</select><p class="muted small">最終データ受信：${esc(syncLabel())}</p></div>` +
+    `<div class="metrics">${stats.map(([label, value, detail]) => `<article class="metric"><div class="metric-top"><span>${label}</span></div><div class="metric-number">${value}</div><p>${detail}</p></article>`).join("")}</div>` +
+    `<p class="study-total">全期間の累計：<strong>${minutes(total.time)} 分</strong> · ${total.count.toLocaleString()} 回回答 · ${total.activeDays} 日学習 · 連続 ${state.stats.streak} 日</p>` +
+    `<div class="overview-grid"><section class="panel"><div class="panel-title"><div><h2>回答の内訳</h2><p>${period}</p></div></div><div class="rating-breakdown">${["Again（もう一度）", "Hard（難しい）", "Good（普通）", "Easy（簡単）"].map((label, i) => `<div><span>${label}</span><strong>${s.byEase[i]} 回</strong><span class="time-bar"><span data-width="${s.count ? (s.byEase[i] / s.count) * 100 : 0}"></span></span></div>`).join("")}</div></section><section class="panel"><div class="panel-title"><div><h2>デッキごとの学習</h2><p>${period} · 学習時間の多い順</p></div></div><div class="table-scroll"><table class="daily-table"><thead><tr><th>デッキ</th><th>学習時間</th><th>回答</th><th>正解率</th></tr></thead><tbody>${s.decks.length ? s.decks.map((d) => `<tr><th>${esc(d.deck.replaceAll("::", " / "))}</th><td>${minutes(d.time)} 分</td><td>${d.count} 回</td><td>${percent(d.correct, d.count)}</td></tr>`).join("") : '<tr><td colspan="4">この期間の回答履歴はありません。</td></tr>'}</tbody></table></div></section></div>` +
+    `<section class="panel"><div class="panel-title"><div><h2>日ごとの学習記録</h2><p>${days ? period : "直近30日間"} · ${esc(state.timezone)}</p></div><span class="chip">Ankiの回答履歴から集計</span></div><div class="table-scroll"><table class="daily-table"><thead><tr><th scope="col">日付</th><th scope="col">回答回数</th><th scope="col">正解率</th><th scope="col">学習時間</th><th scope="col">平均回答時間</th></tr></thead><tbody>${range
       .map((d) => {
-        const s = state.stats.byDay.get(d) || { count: 0, correct: 0, time: 0 };
-        return `<tr><th scope="row">${esc(d)}${d === dayKey(new Date(), state.timezone) ? '<span class="today-label">今日</span>' : ""}</th><td>${s.count} 回</td><td>${percent(s.correct, s.count)}</td><td>${minutes(s.time)} 分</td><td><span class="time-bar"><span data-width="${Math.min(100, (minutes(s.time) / 30) * 100)}"></span></span></td></tr>`;
+        const r = state.stats.byDay.get(d) || { count: 0, correct: 0, time: 0 };
+        return `<tr><th scope="row">${esc(d)}${d === dayKey(new Date(), state.timezone) ? '<span class="today-label">今日</span>' : ""}</th><td>${r.count} 回</td><td>${percent(r.correct, r.count)}</td><td>${minutes(r.time)} 分</td><td>${r.count ? `${Math.round(r.time / r.count / 100) / 10} 秒` : "—"}</td></tr>`;
       })
       .join(
         "",
-      )}</tbody></table></div></section><p class="data-note">学習時間はAnkiの回答時間の合計です。アプリを開いていた時間・休憩時間は含みません。Anki側の計測上限が反映されます。</p>`
+      )}</tbody></table></div></section><p class="data-note">学習時間はAnkiの回答時間の合計です。アプリでカードを読んだ時間や休憩は含みません。Anki側の計測上限が反映されます。学習端末でAnkiWebへ同期した後、Pagesが更新されると表示に反映されます。</p>`
   );
 }
+
 function settings() {
   return (
     heading(
@@ -554,6 +751,7 @@ function settings() {
       "Ankiと、GitHubでつながる。",
       "データはGitHub Pagesで暗号化配信され、このブラウザー内で復号されます。",
     ) +
+    tagSyncPanel(true) +
     `
   <div class="settings-grid"><section class="panel"><div class="panel-title"><div><h2>接続の状態</h2><p>閲覧パスワードはブラウザーの外へ送りません。</p></div><span class="pill connected">${state.demo ? "デモ" : "復号済み"}</span></div>
   <dl class="connection-info"><div><dt>プロフィール</dt><dd>${esc(state.snapshot?.source.profile || "未設定")}</dd></div><div><dt>最終データ受信</dt><dd>${esc(syncLabel())}</dd></div><div><dt>接続方式</dt><dd>AnkiWeb / AnkiConnect → 暗号化Pages</dd></div></dl>
@@ -583,6 +781,44 @@ function paintCharts() {
   });
 }
 function bindView() {
+  document
+    .querySelectorAll("[data-export-tags]")
+    .forEach((el) => el.addEventListener("click", exportTags));
+  document.querySelectorAll("[data-clear-tags]").forEach((el) =>
+    el.addEventListener("click", async () => {
+      if (
+        state.tagBusy ||
+        !confirm(
+          "まだAnkiへ反映していない変更も取り消されます。下書きを取り消しますか？",
+        )
+      )
+        return;
+      try {
+        if (
+          localStorage.getItem("atlas-tag-draft") !== state.tagStoredVersion
+        ) {
+          toast(
+            "別のタブで下書きが更新されました。必要な変更をファイルへ保存してから読み直してください。",
+          );
+          return;
+        }
+        localStorage.removeItem("atlas-tag-draft");
+        state.tagStoredVersion = null;
+      } catch {
+        toast("端末の下書きを削除できませんでした。");
+        return;
+      }
+      state.tagChanges.clear();
+      state.tagRecoveryError = false;
+      state.tagStorageError = false;
+      setSnapshot(state.baseSnapshot);
+      shell();
+    }),
+  );
+  $("#study-period")?.addEventListener("change", (e) => {
+    state.studyDays = Number(e.target.value);
+    shell();
+  });
   document
     .querySelectorAll("[data-go-settings]")
     .forEach((el) => el.addEventListener("click", () => navigate("settings")));
@@ -629,7 +865,7 @@ function bindView() {
   $("#timezone")?.addEventListener("change", (e) => {
     state.timezone = e.target.value;
     localStorage.setItem("atlas-timezone", state.timezone);
-    setSnapshot(state.snapshot);
+    setSnapshot(state.baseSnapshot);
     shell();
     toast("集計タイムゾーンを変更しました。");
   });
@@ -652,6 +888,35 @@ function updateCards() {
   bindTags();
 }
 function bindCards() {
+  document.querySelectorAll("[data-note-tags]").forEach((form) =>
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (state.tagBusy) return;
+      if (state.tagRecoveryError) {
+        toast("以前の下書きを保存して取り消してから、タグを追加してください。");
+        return;
+      }
+      try {
+        const next = stageTags(
+          state.baseSnapshot,
+          state.tagChanges,
+          Number(form.dataset.noteTags),
+          form.elements.tags.value,
+        );
+        await saveTagChange(next);
+      } catch (err) {
+        toast(err.message);
+      }
+    }),
+  );
+  document.querySelectorAll("[data-undo-tags]").forEach((el) =>
+    el.addEventListener("click", async () => {
+      if (state.tagBusy) return;
+      const next = new Map(state.tagChanges);
+      next.delete(Number(el.dataset.undoTags));
+      await saveTagChange(next);
+    }),
+  );
   document.querySelectorAll("[data-answer]").forEach((el) =>
     el.addEventListener("click", () => {
       const id = Number(el.dataset.answer);
@@ -706,11 +971,25 @@ function exportCards() {
 }
 async function refresh(notify = false) {
   if (state.busy) return;
+  if (state.tagBusy) {
+    toast("タグの保存が終わってから更新してください。");
+    return;
+  }
   state.busy = true;
   try {
     const snapshot = state.demo
       ? demoSnapshot()
       : await decryptPackage(await fetchPackage(), state.masterKey);
+    if (
+      state.tagChanges.size &&
+      state.baseSnapshot &&
+      (snapshot.source.kind !== state.baseSnapshot.source.kind ||
+        snapshot.source.profile !== state.baseSnapshot.source.profile)
+    )
+      throw new Error(
+        "公開データのプロフィールが変わりました。タグ変更を保存して取り消してから更新してください。",
+      );
+    withTagChanges(snapshot, state.tagChanges);
     const urls = state.demo ? new Map() : await createMediaURLs(snapshot);
     revokeMediaURLs(state.mediaURLs);
     state.mediaURLs = urls;
@@ -742,7 +1021,15 @@ window.addEventListener("pagehide", () => {
   state.snapshot = null;
   state.stats = null;
   state.expanded.clear();
+  state.tagChanges.clear();
+  state.baseSnapshot = null;
   $("#app").replaceChildren();
+});
+window.addEventListener("beforeunload", (event) => {
+  if (state.tagBusy || (state.tagStorageError && state.tagChanges.size)) {
+    event.preventDefault();
+    event.returnValue = "";
+  }
 });
 window.addEventListener("pageshow", (event) => {
   if (event.persisted) location.reload();

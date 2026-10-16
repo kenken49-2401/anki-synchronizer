@@ -10,7 +10,69 @@ import {
   minutes,
   deckTree,
   groupCards,
+  periodSummary,
 } from "../web/stats.mjs";
+
+test("period statistics sum Anki time, ratings and decks across Tokyo day boundaries", () => {
+  const now = new Date("2026-10-16T05:00:00Z"),
+    data = {
+      cards: [
+        { id: 1, deck: "科学::化学" },
+        { id: 2, deck: "英語" },
+      ],
+      reviews: [
+        {
+          id: Date.parse("2026-10-15T15:00:00Z"),
+          card_id: 1,
+          ease: 1,
+          time_ms: 10000,
+          type: 1,
+        },
+        {
+          id: Date.parse("2026-10-15T14:59:59Z"),
+          card_id: 2,
+          ease: 3,
+          time_ms: 30000,
+          type: 1,
+        },
+        {
+          id: Date.parse("2026-10-16T04:00:00Z"),
+          card_id: 1,
+          ease: 4,
+          time_ms: 20000,
+          type: 1,
+        },
+        {
+          id: Date.parse("2026-10-16T04:00:01Z"),
+          card_id: 1,
+          ease: 0,
+          time_ms: 999999,
+          type: 4,
+        },
+        {
+          id: Date.parse("2026-10-17T04:00:00Z"),
+          card_id: 1,
+          ease: 4,
+          time_ms: 999999,
+          type: 1,
+        },
+      ],
+    };
+  const s = periodSummary(data, { days: 1, now });
+  assert.equal(s.time, 30000);
+  assert.equal(s.count, 2);
+  assert.equal(s.correct, 1);
+  assert.equal(s.averageMs, 15000);
+  assert.equal(s.activeDays, 1);
+  assert.equal(s.uniqueCards, 1);
+  assert.deepEqual(s.byEase, [1, 0, 0, 1]);
+  assert.equal(s.decks[0].deck, "科学::化学");
+  const all = periodSummary(data, { days: 0, now });
+  assert.equal(all.time, 60000);
+  assert.equal(all.activeDays, 2);
+  assert.equal(all.decks.length, 2);
+  assert.equal(periodSummary({ cards: [], reviews: [] }, { now }).averageMs, 0);
+});
 
 test("deck tree includes empty parents, direct counts and descendant counts", () => {
   const cards = [

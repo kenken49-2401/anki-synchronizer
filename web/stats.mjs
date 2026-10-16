@@ -182,3 +182,49 @@ export function percent(correct, count) {
 export function minutes(ms) {
   return Math.round((ms / 60000) * 10) / 10;
 }
+
+export function periodSummary(
+  snapshot,
+  { days = 30, timezone = "Asia/Tokyo", now = new Date() } = {},
+) {
+  const until = new Date(now).valueOf();
+  const today = dayKey(now, timezone);
+  const first = days ? dayRange(days, now, timezone)[0] : "";
+  const cards = new Map((snapshot?.cards || []).map((c) => [c.id, c]));
+  const byDeck = new Map(),
+    byEase = [0, 0, 0, 0],
+    studied = new Set(),
+    active = new Set();
+  let count = 0,
+    correct = 0,
+    time = 0;
+  for (const r of studyReviews(snapshot)) {
+    const day = dayKey(r.id, timezone);
+    if (!day || r.id > until || day > today || (first && day < first)) continue;
+    const duration = Number.isFinite(r.time_ms) ? Math.max(0, r.time_ms) : 0;
+    const deck = cards.get(r.card_id).deck;
+    const entry = byDeck.get(deck) || { deck, count: 0, correct: 0, time: 0 };
+    count++;
+    correct += Number(r.ease > 1);
+    time += duration;
+    entry.count++;
+    entry.correct += Number(r.ease > 1);
+    entry.time += duration;
+    byDeck.set(deck, entry);
+    byEase[r.ease - 1]++;
+    studied.add(r.card_id);
+    active.add(day);
+  }
+  return {
+    count,
+    correct,
+    time,
+    averageMs: count ? time / count : 0,
+    activeDays: active.size,
+    uniqueCards: studied.size,
+    byEase,
+    decks: [...byDeck.values()].sort(
+      (a, b) => b.time - a.time || a.deck.localeCompare(b.deck, "ja"),
+    ),
+  };
+}

@@ -22,7 +22,7 @@ from pages_crypto import MAX_PACKAGE_BYTES, PackageError, decrypt, encrypt, pass
 
 ROOT = Path(__file__).resolve().parent
 PACKAGE_NAME = "snapshot.enc.json"
-ASSETS = {"index.html", "app.js", "styles.css", "stats.mjs", "vault.mjs"}
+ASSETS = {"index.html", "app.js", "styles.css", "stats.mjs", "vault.mjs", "tags.mjs"}
 
 
 def load_package(path: Path, password: str) -> dict:

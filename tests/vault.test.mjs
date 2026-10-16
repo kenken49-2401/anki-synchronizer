@@ -5,9 +5,22 @@ import {
   decryptPackage,
   createMediaURLs,
   revokeMediaURLs,
+  encryptData,
+  decryptData,
 } from "../web/vault.mjs";
 
 const password = "random-looking-test-only-password-1732";
+test("browser tag drafts encrypt with new nonces, round-trip and cannot be loaded as snapshots", async () => {
+  const key = await importPassword(password),
+    value = { format: "anki-atlas-tag-changes", private: "PRIVATE_TAG_1292" };
+  const one = await encryptData(value, key),
+    two = await encryptData(value, key);
+  assert.notEqual(one.salt, two.salt);
+  assert.notEqual(one.iv, two.iv);
+  assert.ok(!JSON.stringify(one).includes(value.private));
+  assert.deepEqual(await decryptData(one, key), value);
+  await assert.rejects(decryptPackage(one, key));
+});
 async function packageFor(value) {
   const salt = crypto.getRandomValues(new Uint8Array(16)),
     iv = crypto.getRandomValues(new Uint8Array(12));

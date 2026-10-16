@@ -35,6 +35,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from card_media import validate_media, rich
+from note_identity import note_fingerprint
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
@@ -221,11 +222,17 @@ def validate_snapshot(value: Any) -> dict[str, Any]:
         suspended = card.get("suspended", False)
         if type(suspended) is not bool:
             raise SnapshotValidationError("card.suspended must be a boolean")
+        model = _text(card.get("model", ""), "card.model", 256)
+        raw_fields = {_text(k, "field name", 256): _text(v, "field value", 128_000) for k, v in fields.items()}
+        identity = card.get("tag_identity")
+        if identity is not None and (not isinstance(identity, str) or re.fullmatch(r"[a-f0-9]{64}", identity) is None):
+            raise SnapshotValidationError("card.tag_identity must be a SHA-256 fingerprint")
         safe_cards.append({
             "id": card_id,
             "note_id": _integer(card.get("note_id"), "card.note_id", 1),
             "deck": _text(card.get("deck"), "card.deck", 512),
-            "model": _text(card.get("model", ""), "card.model", 256),
+            "model": model,
+            "tag_identity": identity or note_fingerprint(model, raw_fields),
             "tags": list(dict.fromkeys(_text(tag, "card.tag", 512) for tag in tags)),
             "front": _text(card.get("front"), "card.front", 128_000, markup=True),
             "back": _text(card.get("back"), "card.back", 128_000, markup=True, answer_only=True),

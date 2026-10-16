@@ -39,7 +39,7 @@ export async function importPassword(password) {
   }
 }
 
-export async function decryptPackage(pkg, masterKey) {
+export async function decryptData(pkg, masterKey) {
   if (
     !pkg ||
     pkg.format !== FORMAT ||
@@ -70,15 +70,6 @@ export async function decryptPackage(pkg, masterKey) {
       const snapshot = JSON.parse(
         new TextDecoder("utf-8", { fatal: true }).decode(clear),
       );
-      if (
-        snapshot?.schema_version !== 1 ||
-        !Array.isArray(snapshot.cards) ||
-        !Array.isArray(snapshot.reviews) ||
-        !snapshot.source ||
-        snapshot.cards.length > 50000 ||
-        snapshot.reviews.length > 1000000
-      )
-        throw new Error();
       return snapshot;
     } finally {
       new Uint8Array(clear).fill(0);
@@ -87,6 +78,59 @@ export async function decryptPackage(pkg, masterKey) {
     throw new Error(
       "復号できません。パスワード、またはファイルの破損を確認してください。",
     );
+  }
+}
+
+export async function decryptPackage(pkg, masterKey) {
+  const snapshot = await decryptData(pkg, masterKey);
+  if (
+    snapshot?.schema_version !== 1 ||
+    !Array.isArray(snapshot.cards) ||
+    !Array.isArray(snapshot.reviews) ||
+    !snapshot.source ||
+    snapshot.cards.length > 50000 ||
+    snapshot.reviews.length > 1000000
+  )
+    throw new Error("復号した学習データの形式が正しくありません。");
+  return snapshot;
+}
+
+function encode(bytes) {
+  let result = "";
+  for (let i = 0; i < bytes.length; i += 8192)
+    result += String.fromCharCode(...bytes.subarray(i, i + 8192));
+  return btoa(result);
+}
+
+export async function encryptData(value, masterKey) {
+  const clear = encoder.encode(JSON.stringify(value));
+  if (clear.length > MAX_CLEAR) throw new Error("変更ファイルが大きすぎます。");
+  const salt = crypto.getRandomValues(new Uint8Array(16)),
+    iv = crypto.getRandomValues(new Uint8Array(12));
+  try {
+    const key = await crypto.subtle.deriveKey(
+      { name: "PBKDF2", salt, iterations: ITERATIONS, hash: "SHA-256" },
+      masterKey,
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["encrypt"],
+    );
+    const data = await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv, additionalData: aad, tagLength: 128 },
+      key,
+      clear,
+    );
+    return {
+      format: FORMAT,
+      version: 1,
+      kdf: "PBKDF2-SHA256",
+      iterations: ITERATIONS,
+      salt: encode(salt),
+      iv: encode(iv),
+      ciphertext: encode(new Uint8Array(data)),
+    };
+  } finally {
+    clear.fill(0);
   }
 }
 
