@@ -1,4 +1,19 @@
-# ChatGPTから使う、無料枠向けAnki連携の試作
+# Anki Atlas — ローカル＋GitHubの学習ダッシュボード
+
+AnkiWebからカード・タグ・復習履歴・図を読み取り、GitHub Actionsで暗号化してGitHub Pagesに配置します。閲覧パスワードでブラウザー内だけで復号します。Renderや常駐サーバーは不要です。
+
+青いカード一覧、図と化学式、答えの開閉、検索、タグ、デッキ／親フォルダ別の表示、正解率・日別学習時間に対応します。PC停止中もAnkiWebへ同期済みの内容を定期更新できます。AnkiWebへの書き込みは行いません。
+
+- 初回設定と使い方：[DASHBOARD.md](DASHBOARD.md)
+- Pages公開・Secrets・自動更新：[ACTIONS_SETUP.md](ACTIONS_SETUP.md)
+- 検証結果：[DASHBOARD_VERIFICATION.md](DASHBOARD_VERIFICATION.md)
+
+コードの公開と、実アカウントの設定・Pagesの有効化は別です。平文のカード・コレクション・秘密ファイルはGitへ追加しません。利用ライブラリを含めAGPLのライセンス条件を維持してください。
+
+<details>
+<summary>従来のMCP／Render方式の説明（新しいPages構成では使用しません）</summary>
+
+# 従来のChatGPT向けMCP試作
 
 **タグ別カード一覧・学習統計のWebアプリ「Anki Atlas」を追加しました。** AnkiConnect経由で自分のAnkiのカードと学習履歴を取り込み、認証付きのオンライン画面で確認できます。セットアップ・公開方法は [DASHBOARD.md](DASHBOARD.md) を参照してください。以下は従来のMCP試作の説明です。
 
@@ -168,3 +183,5 @@ SQLはPostgreSQL 17に `anon`、`authenticated`、`service_role`（BYPASSRLS）�
 AnkiはAGPL-3.0-or-laterです。この試作ソースも同じライセンスで提供します。デプロイ時は利用したソースと依存のライセンス条件を維持してください。
 
 PC停止中の定期取り込みは [GitHub Actions設定手順](ACTIONS_SETUP.md) を参照してください。
+
+</details>

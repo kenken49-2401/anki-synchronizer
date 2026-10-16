@@ -17,3 +17,6 @@ dist/
 snapshot.json
 playwright-report/
 test-results/
+.pages.env
+.private/
+site/

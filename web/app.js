@@ -1,10 +1,19 @@
 import {
+  importPassword,
+  decryptPackage,
+  fetchPackage,
+  createMediaURLs,
+  revokeMediaURLs,
+} from "./vault.mjs";
+import {
   summarize,
   filterCards,
   percent,
   minutes,
   dayKey,
   dayRange,
+  deckTree,
+  groupCards,
 } from "./stats.mjs";
 
 const $ = (s) => document.querySelector(s);
@@ -58,10 +67,18 @@ const state = {
   query: "",
   deck: "",
   sort: "default",
+  groupBy: ["none", "deck", "folder"].includes(
+    localStorage.getItem("atlas-grouping"),
+  )
+    ? localStorage.getItem("atlas-grouping")
+    : "none",
+  includeSubdecks: localStorage.getItem("atlas-subdecks") !== "false",
   page: 0,
   timezone: localStorage.getItem("atlas-timezone") || "Asia/Tokyo",
   expanded: new Set(),
   busy: false,
+  masterKey: null,
+  mediaURLs: new Map(),
 };
 try {
   new Intl.DateTimeFormat("ja-JP", { timeZone: state.timezone });
@@ -161,7 +178,10 @@ function demoSnapshot() {
   const cards = seed.map(([tag, front, back, deck], i) => ({
     id: 1000 + i,
     note_id: 2000 + i,
-    deck,
+    deck:
+      deck === "医学"
+        ? `医学::${tag.split("::")[0]}`
+        : `英語::${tag.split("::")[1]}`,
     model: "Basic",
     tags: i % 4 === 0 ? [tag, "重点復習"] : [tag],
     front,
@@ -204,25 +224,6 @@ function demoSnapshot() {
   };
 }
 
-async function api(path, options = {}) {
-  const res = await fetch(`./api/${path}`, {
-    credentials: "same-origin",
-    ...options,
-    headers: { "Content-Type": "application/json", ...options.headers },
-  });
-  if (!res.ok) {
-    const error = new Error(
-      res.status === 401
-        ? "パスワードを確認してください。"
-        : res.status === 429
-          ? "操作が続いたため、少し待ってからもう一度お試しください。"
-          : "接続できませんでした。時間をおいて再度お試しください。",
-    );
-    error.status = res.status;
-    throw error;
-  }
-  return res.json();
-}
 function toast(message) {
   const el = $("#toast");
   el.textContent = message;
@@ -253,18 +254,22 @@ function syncLabel() {
 
 function login(message = "") {
   $("#app").innerHTML =
-    `<div class="login-layout"><section class="login-story"><a class="brand" href="./"><span class="brand-mark">A</span>Anki <strong>Atlas</strong></a><div><span class="eyebrow">YOUR LEARNING, CONNECTED</span><h1>学びを、<br>ひとつの景色に。</h1><p>散らばったカードをタグで整理。<br>積み重ねた学習を、見えるかたちに。</p><div class="story-cards"><div>${icon("tag", 24)}<b>タグでつながる知識</b><span>カードを横断して、まとめて読む。</span></div><div>${icon("chart", 24)}<b>毎日の、小さな前進</b><span>正解率と学習時間を振り返る。</span></div></div></div><small>Made for your Anki collection.</small></section><main class="login-main"><div class="login-box"><span class="eyebrow">WELCOME BACK</span><h2>あなたの学習スペースへ</h2><p class="muted">ダッシュボードのパスワードでログイン</p><form id="login-form"><label for="password">パスワード</label><input id="password" name="password" type="password" autocomplete="current-password" required placeholder="ダッシュボードのパスワード"><p id="login-error" class="error" role="alert">${esc(message)}</p><button class="button primary wide" type="submit">ログイン ${icon("arrow", 17)}</button></form><div class="login-divider"><span>まずは雰囲気を見たい方へ</span></div><a class="button subtle wide" href="?demo=1">デモを見てみる ${icon("arrow", 17)}</a><p class="login-note">Ankiの接続先はあとから設定できます。<br>AnkiWebのパスワードは、この画面では入力しません。</p></div></main></div>`;
+    `<div class="login-layout"><section class="login-story"><a class="brand" href="./"><span class="brand-mark">A</span>Anki <strong>Atlas</strong></a><div><span class="eyebrow">YOUR LEARNING, CONNECTED</span><h1>学びを、<br>ひとつの景色に。</h1><p>散らばったカードをタグで整理。<br>積み重ねた学習を、見えるかたちに。</p><div class="story-cards"><div>${icon("tag", 24)}<b>タグでつながる知識</b><span>カードを横断して、まとめて読む。</span></div><div>${icon("chart", 24)}<b>毎日の、小さな前進</b><span>正解率と学習時間を振り返る。</span></div></div></div><small>Made for your Anki collection.</small></section><main class="login-main"><div class="login-box"><span class="eyebrow">WELCOME BACK</span><h2>あなたの学習スペースへ</h2><p class="muted">閲覧パスワードで、このブラウザー内だけで復号</p><form id="login-form"><label for="password">パスワード</label><input id="password" name="password" type="password" autocomplete="current-password" required placeholder="ダッシュボードのパスワード"><p id="login-error" class="error" role="alert">${esc(message)}</p><button class="button primary wide" type="submit">ログイン ${icon("arrow", 17)}</button></form><div class="login-divider"><span>まずは雰囲気を見たい方へ</span></div><a class="button subtle wide" href="?demo=1">デモを見てみる ${icon("arrow", 17)}</a><p class="login-note">パスワードはサーバーへ送信・保存しません。<br>AnkiWebのパスワードは入力しないでください。</p></div></main></div>`;
   $("#login-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const button = e.target.querySelector("button");
     button.disabled = true;
     try {
-      await api("login", {
-        method: "POST",
-        body: JSON.stringify({ password: $("#password").value }),
-      });
+      const password = $("#password").value;
       $("#password").value = "";
-      await refresh();
+      const key = await importPassword(password);
+      const snapshot = await decryptPackage(await fetchPackage(), key);
+      const urls = await createMediaURLs(snapshot);
+      revokeMediaURLs(state.mediaURLs);
+      state.mediaURLs = urls;
+      state.masterKey = key;
+      setSnapshot(snapshot);
+      shell();
     } catch (err) {
       $("#login-error").textContent = err.message;
     } finally {
@@ -286,12 +291,11 @@ function shell() {
   document.querySelectorAll("#logout, #header-logout").forEach((el) =>
     el.addEventListener("click", async () => {
       if (!state.demo) {
-        try {
-          await api("logout", { method: "POST", body: "{}" });
-        } catch {
-          toast("ログアウトできませんでした。再度お試しください。");
-          return;
-        }
+        state.masterKey = null;
+        revokeMediaURLs(state.mediaURLs);
+        state.snapshot = null;
+        state.stats = null;
+        state.expanded.clear();
       }
       location.assign(location.pathname);
     }),
@@ -433,7 +437,12 @@ function cardHTML(card, side) {
         node.remove();
         continue;
       }
-      node.setAttribute("src", src);
+      const imageURL = state.mediaURLs.get(src.slice(-64));
+      if (!imageURL) {
+        node.replaceWith(document.createTextNode("［画像未取得］"));
+        continue;
+      }
+      node.setAttribute("src", imageURL);
       node.setAttribute("alt", alt || "カードの図");
       node.setAttribute("loading", "lazy");
     }
@@ -441,64 +450,83 @@ function cardHTML(card, side) {
   return template.innerHTML;
 }
 
+function groupingSelect(id) {
+  return `<select id="${id}" aria-label="カードのまとめ方">${[
+    ["none", "一覧"],
+    ["deck", "デッキごと"],
+    ["folder", "親フォルダごと"],
+  ]
+    .map(
+      ([value, label]) =>
+        `<option value="${value}" ${state.groupBy === value ? "selected" : ""}>${label}</option>`,
+    )
+    .join("")}</select>`;
+}
 function cardsView() {
-  const s = state.stats;
+  const stats = state.stats;
+  const deckOptions = deckTree(state.snapshot.cards)
+    .map(
+      (node) =>
+        `<option value="${esc(node.name)}" ${state.deck === node.name ? "selected" : ""}>${esc("　".repeat(Math.min(6, node.depth)) + node.name.split("::").at(-1))} (${node.count})</option>`,
+    )
+    .join("");
   return (
     heading(
       "EXPLORE YOUR KNOWLEDGE",
       "カードを、じっくり読み返す。",
-      "同じテーマを並べて、知識をひとつのまとまりに。",
+      "タグやAnkiのフォルダでまとめて、知識をひとつのまとまりに。",
       '<button class="button subtle" id="export-cards">' +
         icon("download", 17) +
         "Markdownで保存</button>",
     ) +
-    `<div class="card-workspace"><aside class="tag-sidebar"><div class="tag-sidebar-heading">タグ一覧<span>${s.tags.length}</span></div><button class="tag-filter ${!state.tag ? "selected" : ""}" data-tag="">${icon("cards", 17)}<span>すべてのカード</span><small>${s.cards}</small></button>${s.tags.map((g, i) => `<button class="tag-filter ${state.tag === g.tag ? "selected" : ""}" data-tag="${esc(g.tag)}"><span class="tag-bullet tag-color-${i % 4}">#</span><span title="${esc(g.tag)}">${esc(g.tag.replaceAll("::", " / "))}</span><small>${g.count}</small></button>`).join("")}</aside><section class="cards-main"><div class="card-toolbar"><label class="search-input">${icon("search", 18)}<input id="search" type="search" placeholder="質問・答え・タグを検索" aria-label="カードを検索" value="${esc(state.query)}"></label><select id="deck-filter" aria-label="デッキで絞り込み"><option value="">すべてのデッキ</option>${[
-      ...new Set(state.snapshot.cards.map((c) => c.deck)),
-    ]
-      .sort()
-      .map(
-        (d) =>
-          `<option ${state.deck === d ? "selected" : ""} value="${esc(d)}">${esc(d)}</option>`,
-      )
-      .join(
-        "",
-      )}</select><select id="sort" aria-label="並び順"><option value="default">カード順</option><option value="accuracy" ${state.sort === "accuracy" ? "selected" : ""}>正解率が低い順</option><option value="recent" ${state.sort === "recent" ? "selected" : ""}>最近学習した順</option></select></div><div id="card-results">${cardResults()}</div></section></div><p class="data-note">${icon("check", 14)} 正解率：Again＝不正解、Hard / Good / Easy＝正解。未回答のカードは「—」。タグはAnkiのノート単位で付きます。</p>`
+    `
+  <div class="card-workspace"><aside class="tag-sidebar"><div class="tag-sidebar-heading">タグ一覧<span>${stats.tags.length}</span></div><button class="tag-filter ${!state.tag ? "selected" : ""}" data-tag="">${icon("cards", 17)}<span>すべてのカード</span><small>${stats.cards}</small></button>${stats.tags.map((g, i) => `<button class="tag-filter ${state.tag === g.tag ? "selected" : ""}" data-tag="${esc(g.tag)}"><span class="tag-bullet tag-color-${i % 4}">#</span><span title="${esc(g.tag)}">${esc(g.tag.replaceAll("::", " / "))}</span><small>${g.count}</small></button>`).join("")}</aside>
+  <section class="cards-main"><div class="card-toolbar"><label class="search-input">${icon("search", 18)}<input id="search" type="search" placeholder="質問・答え・タグを検索" aria-label="カードを検索" value="${esc(state.query)}"></label>
+  <select id="deck-filter" aria-label="デッキで絞り込み"><option value="">すべてのデッキ</option>${deckOptions}</select>
+  <select id="sort" aria-label="並び順"><option value="default">カード順</option><option value="accuracy" ${state.sort === "accuracy" ? "selected" : ""}>正解率が低い順</option><option value="recent" ${state.sort === "recent" ? "selected" : ""}>最近学習した順</option></select></div>
+  <div class="folder-controls"><label>まとめ方 ${groupingSelect("grouping")}</label><label class="checkbox-label"><input type="checkbox" id="include-subdecks" ${state.includeSubdecks ? "checked" : ""}>サブデッキを含める</label></div><div id="card-results">${cardResults()}</div></section></div>
+  <p class="data-note">${icon("check", 14)} 正解率：Again＝不正解、Hard / Good / Easy＝正解。未回答は「—」。フォルダはAnkiのデッキ／サブデッキに対応します。</p>`
   );
 }
 function selectedCards() {
-  return filterCards(state.snapshot.cards, state, state.stats.byCard);
+  const cards = filterCards(state.snapshot.cards, state, state.stats.byCard);
+  return groupCards(cards, state.groupBy).flatMap((g) => g.cards);
+}
+function renderStudyCard(c, index) {
+  const s = state.stats.byCard.get(c.id);
+  const accuracy = s?.count ? Math.round((s.correct / s.count) * 100) : null;
+  return `<article class="study-card"><div class="study-card-main"><span class="card-index">${String(index).padStart(2, "0")}</span><div class="card-content"><div class="card-meta"><span>${esc(c.deck)}</span><span>·</span><span>${esc(c.model)}</span>${c.suspended ? '<span class="suspended">休止中</span>' : ""}</div><div class="card-question rich-card">${cardHTML(c, "front")}</div><div class="card-tags">${c.tags.map((t) => `<button data-tag="${esc(t)}"># ${esc(t.replaceAll("::", " / "))}</button>`).join("")}</div></div><div class="card-accuracy"><strong class="${accuracy === null ? "muted" : accuracy < 70 ? "needs-practice" : ""}">${accuracy === null ? "—" : accuracy + "%"}</strong><span>${s?.count || 0} 回回答</span></div></div><button class="answer-toggle" data-answer="${c.id}" aria-expanded="${state.expanded.has(c.id)}" aria-controls="answer-${c.id}">${state.expanded.has(c.id) ? "答えを隠す" : "答えを見る"}${icon("chevron", 13)}</button><div class="answer-content" id="answer-${c.id}" ${state.expanded.has(c.id) ? "" : "hidden"}><span>ANSWER</span><div class="rich-card">${cardHTML(c, "back")}</div>${
+    Object.entries(c.fields || {}).length > 2
+      ? `<details><summary>すべてのフィールド</summary>${Object.entries(
+          c.fields,
+        )
+          .map(
+            ([name, value]) =>
+              `<dl><dt>${esc(name)}</dt><dd>${esc(value)}</dd></dl>`,
+          )
+          .join("")}</details>`
+      : ""
+  }</div></article>`;
 }
 function cardResults() {
-  const cards = selectedCards();
-  const pageSize = 20;
+  const cards = selectedCards(),
+    pageSize = 20;
+  state.page = Math.min(
+    state.page,
+    Math.max(0, Math.ceil(cards.length / pageSize) - 1),
+  );
   const shown = cards.slice(state.page * pageSize, (state.page + 1) * pageSize);
-  const selectedTag = state.tag || "すべてのカード";
-  return `<div class="collection-heading"><div><span class="eyebrow">COLLECTION</span><h2>${esc(selectedTag.replaceAll("::", " / "))}<span>${cards.length} 枚</span></h2></div><button class="text-button" id="toggle-all">${shown.length && shown.every((c) => state.expanded.has(c.id)) ? "答えをすべて隠す" : "答えをすべて表示"}</button></div><div class="cards-list">${
-    shown.length
-      ? shown
-          .map((c, i) => {
-            const s = state.stats.byCard.get(c.id);
-            const accuracy = s?.count
-              ? Math.round((s.correct / s.count) * 100)
-              : null;
-            return `<article class="study-card"><div class="study-card-main"><span class="card-index">${String(state.page * pageSize + i + 1).padStart(2, "0")}</span><div class="card-content"><div class="card-meta"><span>${esc(c.deck)}</span><span>·</span><span>${esc(c.model)}</span>${c.suspended ? '<span class="suspended">休止中</span>' : ""}</div><div class="card-question rich-card">${cardHTML(c, "front")}</div><div class="card-tags">${c.tags.map((t) => `<button data-tag="${esc(t)}"># ${esc(t.replaceAll("::", " / "))}</button>`).join("")}</div></div><div class="card-accuracy"><strong class="${accuracy === null ? "muted" : accuracy < 70 ? "needs-practice" : ""}">${accuracy === null ? "—" : accuracy + "%"}</strong><span>${s?.count || 0} 回回答</span></div></div><button class="answer-toggle" data-answer="${c.id}" aria-expanded="${state.expanded.has(c.id)}" aria-controls="answer-${c.id}">${state.expanded.has(c.id) ? "答えを隠す" : "答えを見る"}${icon("chevron", 13)}</button><div class="answer-content" id="answer-${c.id}" ${state.expanded.has(c.id) ? "" : "hidden"}><span>ANSWER</span><div class="rich-card">${cardHTML(c, "back")}</div>${
-              Object.entries(c.fields || {}).length > 2
-                ? `<details><summary>すべてのフィールド</summary>${Object.entries(
-                    c.fields,
-                  )
-                    .map(
-                      ([name, value]) =>
-                        `<dl><dt>${esc(name)}</dt><dd>${esc(value)}</dd></dl>`,
-                    )
-                    .join("")}</details>`
-                : ""
-            }</div></article>`;
-          })
-          .join("")
-      : '<div class="no-results">' +
-        icon("search", 30) +
-        "<h3>カードが見つかりませんでした</h3><p>検索語や絞り込みを変えてみてください。</p></div>"
-  }</div><div class="pagination"><span>${cards.length ? state.page * pageSize + 1 : 0}–${Math.min((state.page + 1) * pageSize, cards.length)} / ${cards.length} 枚</span><div><button class="button subtle small" id="prev-page" ${state.page === 0 ? "disabled" : ""}>前へ</button><button class="button subtle small" id="next-page" ${(state.page + 1) * pageSize >= cards.length ? "disabled" : ""}>次へ</button></div></div>`;
+  const totals = new Map(
+    groupCards(cards, state.groupBy).map((g) => [g.name, g.cards.length]),
+  );
+  const content = groupCards(shown, state.groupBy)
+    .map(
+      (group) =>
+        `<section class="deck-group">${group.name ? `<h3 class="deck-group-heading">${icon("book", 18)}${esc(group.name.replaceAll("::", " / "))}<small>${group.cards.length} / ${totals.get(group.name)} 枚</small></h3>` : ""}${group.cards.map((c) => renderStudyCard(c, cards.indexOf(c) + 1)).join("")}</section>`,
+    )
+    .join("");
+  return `<div class="collection-heading"><div><span class="eyebrow">COLLECTION</span><h2>${esc((state.tag || state.deck || "すべてのカード").replaceAll("::", " / "))}<span>${cards.length} 枚</span></h2></div><button class="text-button" id="toggle-all">${shown.length && shown.every((c) => state.expanded.has(c.id)) ? "答えをすべて隠す" : "答えをすべて表示"}</button></div><div class="cards-list">${cards.length ? content : '<div class="no-results">' + icon("search", 30) + "<h3>カードが見つかりませんでした</h3><p>検索語や絞り込みを変えてみてください。</p></div>"}</div>
+  <div class="pagination"><span>${cards.length ? state.page * pageSize + 1 : 0}–${Math.min((state.page + 1) * pageSize, cards.length)} / ${cards.length} 枚</span><div><button class="button subtle small" id="prev-page" ${state.page === 0 ? "disabled" : ""}>前へ</button><button class="button subtle small" id="next-page" ${(state.page + 1) * pageSize >= cards.length ? "disabled" : ""}>次へ</button></div></div>`;
 }
 function insights() {
   const range = dayRange(30, new Date(), state.timezone).reverse();
@@ -520,20 +548,31 @@ function insights() {
   );
 }
 function settings() {
-  const profile = localStorage.getItem("atlas-profile") || "";
   return (
     heading(
       "MAKE IT YOURS",
-      "いつものAnkiと、つなぐ。",
-      "アカウントは、PCのAnkiで開いているプロフィールから接続します。",
+      "Ankiと、GitHubでつながる。",
+      "データはGitHub Pagesで暗号化配信され、このブラウザー内で復号されます。",
     ) +
-    `<div class="settings-grid"><section class="panel"><div class="panel-title"><div><h2>接続の状態</h2><p>あなたのカードは、あなたのためだけに。</p></div><span class="pill ${state.snapshot ? "connected" : ""}">${state.demo ? "デモ" : state.snapshot ? "受信済み" : "未接続"}</span></div><dl class="connection-info"><div><dt>プロフィール</dt><dd>${esc(state.snapshot?.source.profile || "未設定")}</dd></div><div><dt>最終データ受信</dt><dd>${esc(syncLabel())}</dd></div><div><dt>接続方式</dt><dd>${state.snapshot?.source.kind === "ankiweb" ? "AnkiWeb → GitHub Actions" : "AnkiConnect → クラウド"}</dd></div></dl><div class="info-box">PC停止中の自動更新はGitHub Actionsで設定できます。学習した端末でAnkiWebへの同期を済ませてください。PC取り込みを使う場合はAnkiと接続プログラムの起動が必要です。</div><label class="setting-label" for="timezone">集計タイムゾーン</label><select id="timezone"><option value="Asia/Tokyo" ${state.timezone === "Asia/Tokyo" ? "selected" : ""}>日本（Asia/Tokyo）</option><option value="UTC" ${state.timezone === "UTC" ? "selected" : ""}>UTC</option><option value="America/New_York" ${state.timezone === "America/New_York" ? "selected" : ""}>ニューヨーク</option><option value="Europe/London" ${state.timezone === "Europe/London" ? "selected" : ""}>ロンドン</option></select><p class="muted small">このブラウザーの表示設定として保存されます。</p></section><section class="panel setup-panel"><span class="eyebrow">CONNECT IN 3 STEPS</span><h2>接続は、あとからでも大丈夫。</h2><ol class="setup-steps"><li><span>1</span><div><h3>PCのAnkiを準備</h3><p>自分のAnkiプロフィールを開き、公式のAnkiConnectアドオン（2055492159）を追加します。AnkiWebのアカウントはAnki側で設定します。</p></div></li><li><span>2</span><div><h3>接続用の設定を用意</h3><p>公開先とPCに、同じ送信用トークンを設定します。秘密の設定ファイルはGitHubに公開しません。</p></div></li><li><span>3</span><div><h3>PCからデータを送信</h3><p>接続プログラムを起動すると、カードと学習履歴が届きます。Ankiのカードを書き換える操作は行いません。</p></div></li></ol><label class="setting-label" for="profile-name">接続するプロフィール名（任意）</label><input id="profile-name" type="text" maxlength="200" placeholder="例：User 1" value="${esc(profile)}"><p class="muted small">指定すると、接続先が違う場合に送信を止めます。</p><pre class="command" id="connector-command"></pre><button class="button subtle" id="copy-command">接続コマンドをコピー</button><p class="muted small">PC取り込みは DASHBOARD.md、PC停止中の自動更新は ACTIONS_SETUP.md を参照してください。</p></section></div>`
+    `
+  <div class="settings-grid"><section class="panel"><div class="panel-title"><div><h2>接続の状態</h2><p>閲覧パスワードはブラウザーの外へ送りません。</p></div><span class="pill connected">${state.demo ? "デモ" : "復号済み"}</span></div>
+  <dl class="connection-info"><div><dt>プロフィール</dt><dd>${esc(state.snapshot?.source.profile || "未設定")}</dd></div><div><dt>最終データ受信</dt><dd>${esc(syncLabel())}</dd></div><div><dt>接続方式</dt><dd>AnkiWeb / AnkiConnect → 暗号化Pages</dd></div></dl>
+  <div class="info-box">PC停止中もGitHub ActionsがAnkiWebから定期取得します。学習した端末でAnkiWebへ同期してください。「表示を更新」は最後に公開されたデータを読み込みます。</div>
+  <label class="setting-label" for="settings-grouping">カードのまとめ方</label>${groupingSelect("settings-grouping")}<p class="muted small">親フォルダごとは最上位のデッキでまとめます。カード一覧でも切り替えられます。</p><label class="setting-label" for="timezone">集計タイムゾーン</label><select id="timezone">${[
+    ["Asia/Tokyo", "日本（Asia/Tokyo）"],
+    ["UTC", "UTC"],
+    ["America/New_York", "ニューヨーク"],
+    ["Europe/London", "ロンドン"],
+  ]
+    .map(
+      ([value, label]) =>
+        `<option value="${value}" ${state.timezone === value ? "selected" : ""}>${label}</option>`,
+    )
+    .join(
+      "",
+    )}</select><p class="muted small">このブラウザーの表示設定として保存されます。</p>
+  </section><section class="panel setup-panel"><span class="eyebrow">LOCAL + GITHUB</span><h2>サーバー契約は不要です。</h2><ol class="setup-steps"><li><span>1</span><div><h3>自分のPCで準備</h3><p>閲覧用パスワードを生成し、AnkiWebトークンを手元で取得します。AnkiConnectからのローカル取り込みも使えます。</p></div></li><li><span>2</span><div><h3>GitHubへ安全に設定</h3><p>パスワードとトークンはGitHub Secretsへ登録します。コードへ書き込みません。</p></div></li><li><span>3</span><div><h3>ActionsとPagesを有効化</h3><p>Actionsが暗号化して配信し、この画面で復号します。最初の設定はDASHBOARD.md、自動更新はACTIONS_SETUP.mdをご覧ください。</p></div></li></ol><div class="info-box">ログアウトまたは再読み込みで復号キーを破棄します。閲覧中の端末では内容を見られるため、共有端末では使い終わったらログアウトしてください。</div></section></div>`
   );
-}
-function command() {
-  const quote = (v) => "'" + v.replaceAll("'", "'\\''") + "'";
-  const profile = $("#profile-name")?.value.trim() || "";
-  return `uv run --frozen --env-file .dashboard.env python connector.py --server ${quote(state.demo ? "https://YOUR-DASHBOARD.example" : location.origin)}${profile ? " --profile " + quote(profile) : ""} --timezone ${quote(state.timezone)} --watch 60`;
 }
 function paintCharts() {
   document.querySelectorAll("[data-height]").forEach((el) => {
@@ -565,6 +604,21 @@ function bindView() {
     state.page = 0;
     updateCards();
   });
+  for (const id of ["grouping", "settings-grouping"]) {
+    document.getElementById(id)?.addEventListener("change", (e) => {
+      state.groupBy = e.target.value;
+      localStorage.setItem("atlas-grouping", state.groupBy);
+      state.page = 0;
+      if (state.view === "cards") updateCards();
+      else toast("カードのまとめ方を保存しました。");
+    });
+  }
+  $("#include-subdecks")?.addEventListener("change", (e) => {
+    state.includeSubdecks = e.target.checked;
+    localStorage.setItem("atlas-subdecks", String(state.includeSubdecks));
+    state.page = 0;
+    updateCards();
+  });
   $("#sort")?.addEventListener("change", (e) => {
     state.sort = e.target.value;
     state.page = 0;
@@ -579,23 +633,8 @@ function bindView() {
     shell();
     toast("集計タイムゾーンを変更しました。");
   });
-  if ($("#connector-command")) {
-    const updateCommand = () => {
-      $("#connector-command").textContent = command();
-      localStorage.setItem("atlas-profile", $("#profile-name").value);
-    };
-    updateCommand();
-    $("#profile-name").addEventListener("input", updateCommand);
-    $("#copy-command").addEventListener("click", async () => {
-      try {
-        await navigator.clipboard.writeText(command());
-        toast("接続コマンドをコピーしました。");
-      } catch {
-        toast("コマンドを選択してコピーしてください。");
-      }
-    });
-  }
 }
+
 function bindTags() {
   document.querySelectorAll("[data-tag]").forEach((el) => {
     if (el.dataset.bound) return;
@@ -642,12 +681,20 @@ function bindCards() {
   });
 }
 function exportCards() {
-  const markdown = `# ${state.tag || "Anki カード一覧"}\n\n${selectedCards()
-    .map((c) => {
-      const s = state.stats.byCard.get(c.id);
-      return `## ${c.front}\n\n${c.back}\n\nタグ: ${c.tags.join(", ") || "なし"} · 正解率: ${percent(s?.correct || 0, s?.count || 0)}\n`;
-    })
-    .join("\n---\n\n")}`;
+  const markdown =
+    `# ${state.tag || state.deck || "Anki カード一覧"}\n\n` +
+    groupCards(selectedCards(), state.groupBy)
+      .map(
+        (group) =>
+          `${group.name ? `## ${group.name.replaceAll("::", " / ")}\n\n` : ""}` +
+          group.cards
+            .map((c) => {
+              const stat = state.stats.byCard.get(c.id);
+              return `### ${c.front}\n\n${c.back}\n\nデッキ: ${c.deck} · タグ: ${c.tags.join(", ") || "なし"} · 正解率: ${percent(stat?.correct || 0, stat?.count || 0)}\n`;
+            })
+            .join("\n---\n\n"),
+      )
+      .join("\n\n");
   const url = URL.createObjectURL(
     new Blob([markdown], { type: "text/markdown;charset=utf-8" }),
   );
@@ -661,10 +708,13 @@ async function refresh(notify = false) {
   if (state.busy) return;
   state.busy = true;
   try {
-    const result = state.demo
-      ? { snapshot: demoSnapshot() }
-      : await api("snapshot");
-    setSnapshot(result.snapshot);
+    const snapshot = state.demo
+      ? demoSnapshot()
+      : await decryptPackage(await fetchPackage(), state.masterKey);
+    const urls = state.demo ? new Map() : await createMediaURLs(snapshot);
+    revokeMediaURLs(state.mediaURLs);
+    state.mediaURLs = urls;
+    setSnapshot(snapshot);
     shell();
     if (notify)
       toast(
@@ -673,9 +723,8 @@ async function refresh(notify = false) {
           : "最後に届いたデータを読み込みました。",
       );
   } catch (err) {
-    if (err.status === 401) login();
-    else if (state.snapshot) toast(err.message);
-    else login("サーバーに接続できません。デモは接続なしでご覧いただけます。");
+    if (state.snapshot) toast(err.message);
+    else login(err.message);
   } finally {
     state.busy = false;
   }
@@ -685,12 +734,16 @@ window.addEventListener("hashchange", () => {
   if (state.stats) shell();
 });
 if (state.demo) await refresh();
-else {
-  try {
-    const session = await api("session");
-    if (session.authenticated) await refresh();
-    else login();
-  } catch {
-    login("サーバーが未設定の場合は、デモをご覧ください。");
-  }
-}
+else login();
+
+window.addEventListener("pagehide", () => {
+  state.masterKey = null;
+  revokeMediaURLs(state.mediaURLs);
+  state.snapshot = null;
+  state.stats = null;
+  state.expanded.clear();
+  $("#app").replaceChildren();
+});
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted) location.reload();
+});

@@ -8,7 +8,85 @@ import {
   filterCards,
   percent,
   minutes,
+  deckTree,
+  groupCards,
 } from "../web/stats.mjs";
+
+test("deck tree includes empty parents, direct counts and descendant counts", () => {
+  const cards = [
+    { deck: "科学" },
+    { deck: "科学::化学" },
+    { deck: "科学::化学::高分子" },
+    { deck: "科学::生物" },
+    { deck: "科学館" },
+    { deck: "英語::単語" },
+  ];
+  const tree = new Map(deckTree(cards).map((n) => [n.name, n]));
+  assert.deepEqual(tree.get("科学"), {
+    name: "科学",
+    depth: 0,
+    count: 4,
+    directCount: 1,
+  });
+  assert.deepEqual(tree.get("科学::化学"), {
+    name: "科学::化学",
+    depth: 1,
+    count: 2,
+    directCount: 1,
+  });
+  assert.deepEqual(tree.get("英語"), {
+    name: "英語",
+    depth: 0,
+    count: 1,
+    directCount: 0,
+  });
+  assert.equal(tree.get("科学館").count, 1);
+});
+
+test("parent deck filtering includes subdecks only when enabled and respects separator", () => {
+  const cards = [
+    card(1, { deck: "科学" }),
+    card(2, { deck: "科学::化学" }),
+    card(3, { deck: "科学::化学::高分子" }),
+    card(4, { deck: "科学館" }),
+  ];
+  assert.deepEqual(
+    filterCards(cards, { deck: "科学" }).map((c) => c.id),
+    [1],
+  );
+  assert.deepEqual(
+    filterCards(cards, { deck: "科学", includeSubdecks: true }).map(
+      (c) => c.id,
+    ),
+    [1, 2, 3],
+  );
+  assert.deepEqual(
+    filterCards(cards, { deck: "科学::化学", includeSubdecks: true }).map(
+      (c) => c.id,
+    ),
+    [2, 3],
+  );
+});
+
+test("folder groups keep parent and descendants together, exact decks remain separate", () => {
+  const cards = [
+    card(1, { deck: "科学::化学" }),
+    card(2, { deck: "科学" }),
+    card(3, { deck: "英語::単語" }),
+    card(4, { deck: "科学::化学::高分子" }),
+  ];
+  const before = structuredClone(cards);
+  const folder = groupCards(cards, "folder");
+  assert.equal(folder.length, 2);
+  assert.deepEqual(
+    folder.find((g) => g.name === "科学").cards.map((c) => c.id),
+    [1, 2, 4],
+  );
+  assert.equal(groupCards(cards, "deck").length, 4);
+  assert.deepEqual(groupCards(cards, "none")[0].cards, cards);
+  assert.deepEqual(groupCards([], "folder"), []);
+  assert.deepEqual(cards, before);
+});
 
 const card = (id, extra = {}) => ({
   id,

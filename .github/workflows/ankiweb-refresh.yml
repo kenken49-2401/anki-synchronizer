@@ -1,38 +1,74 @@
-name: Refresh dashboard from AnkiWeb
+name: Publish encrypted Anki Pages
 
 "on":
   schedule:
     - cron: "17 */3 * * *"
   workflow_dispatch:
+    inputs:
+      source:
+        description: "AnkiWeb update or locally imported encrypted seed"
+        type: choice
+        options: [ankiweb, seed]
+        default: ankiweb
+      discard_previous:
+        description: "Fresh AnkiWeb import, ignoring old encrypted data (password rotation)"
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths: ["pages-data/snapshot.enc.json"]
 
 permissions:
   contents: read
 
+# All Pages publishers share this group. Never cancel a successful refresh mid-deploy.
 concurrency:
-  group: ankiweb-dashboard-sync
+  group: pages
   cancel-in-progress: false
 
 jobs:
-  refresh:
-    if: vars.ANKI_AUTO_SYNC_ENABLED == 'true'
+  build:
+    if: github.event_name == 'workflow_dispatch' || vars.ANKI_AUTO_SYNC_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: anki-sync
+    permissions:
+      contents: read
+      pages: read
     steps:
-      - name: Check out source
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Set up Python and uv
-        uses: astral-sh/setup-uv@v6
+      - uses: actions/configure-pages@v5
+        id: pages
+      - uses: astral-sh/setup-uv@v6
         with:
           python-version: 3.12.14
           enable-cache: true
-      - name: Download AnkiWeb snapshot and refresh dashboard
+      - name: Read Anki, encrypt data and images, build static site
         env:
+          PAGES_PASSWORD: ${{ secrets.PAGES_PASSWORD }}
           ANKIWEB_HKEY: ${{ secrets.ANKIWEB_HKEY }}
           ANKIWEB_ENDPOINT: ${{ secrets.ANKIWEB_ENDPOINT }}
-          ANKI_UPLOAD_TOKEN: ${{ secrets.ANKI_UPLOAD_TOKEN }}
-          DASHBOARD_URL: ${{ vars.DASHBOARD_URL }}
           ANKI_TIMEZONE: ${{ vars.ANKI_TIMEZONE || 'Asia/Tokyo' }}
-        run: uv run --frozen python cloud_sync.py
+          PAGES_PREVIOUS_URL: ${{ steps.pages.outputs.base_url }}
+          PAGES_SOURCE: ${{ inputs.source || 'ankiweb' }}
+          PAGES_DISCARD_PREVIOUS: ${{ inputs.discard_previous && 'true' || 'false' }}
+        run: uv run --frozen python pages_site.py --source "$PAGES_SOURCE" --previous-url "$PAGES_PREVIOUS_URL"
+      - name: Upload public assets and ciphertext only
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+          retention-days: 1
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/deploy-pages@v4
+        id: deployment

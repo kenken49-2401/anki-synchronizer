@@ -1,173 +1,126 @@
-# Ankiタグ別ダッシュボード
+# Anki Atlas：ローカル＋GitHubだけで使う
 
-自分のAnkiカードをタグごとに閲覧し、カード別の正解率と日ごとの学習記録を確認する個人用Webアプリです。接続先のAnkiアカウントは後から設定できます。Web画面にAnkiWebのパスワードを預ける必要はありません。
+Render・Supabase・常駐Pythonサーバーは不要です。GitHub ActionsがAnkiWebを読み取り、カード・復習履歴・画像を暗号化してGitHub Pagesへ配置します。閲覧パスワードを入力するとブラウザー内で復号します。
 
-共有されたChatGPTのチャット本文はこの環境から取得できていません。画面は依頼された機能を基に作成しており、そのチャットの表示形式との完全一致は未確認です。
-
-## 構成とできること
+- 青いカード一覧、図・化学式、答えの個別／一括表示、検索、タグ別表示。
+- カード別の正解率、日別の回答数・学習時間、連続学習。
+- **一覧／デッキごと／親フォルダごと**の表示切り替え。親デッキを選んでサブデッキを含めることもできます。
+- PCのAnkiConnectから取り込む方法もあります。AnkiWebへのカード編集・回答記録・画像アップロードは行いません。
 
 ```text
-自分のPCで起動したAnki
-  └─ AnkiConnect（127.0.0.1:8765、APIキー）
-       └─ connector.py：カード・復習履歴の読み取り
-            └─ HTTPS + アップロード専用トークン
-                 └─ クラウドの dashboard.py
-                      ├─ 暗号化した最新スナップショット
-                      └─ パスワード認証 → ブラウザーのダッシュボード
+PC / スマホのAnki → AnkiWebへの通常同期
+                           ↓ 読み取りだけ
+                 GitHub Actions → データ＋画像を暗号化
+                           ↓
+                 GitHub Pages（画面＋暗号文）
+                           ↓ 閲覧パスワード
+                 自分のブラウザー内で復号・表示
 ```
 
-- 「学習ダッシュボード」でカード数や学習状況を確認できます。
-- 「タグ別カード」でタグ・検索による絞り込み、カードの表裏、カード別の成績を確認できます。複数タグのカードは各タグに現れるため、タグ別件数を足すと全カード数を超える場合があります。
-- 「学習の記録」で日ごとの学習時間・回答数・正解率を確認できます。
-- 「接続・設定」で接続方法と最終同期の状態を確認できます。
+## 1. 自分のPCにコードとツールを用意する
 
-ブラウザー用のデモデータと、自分のデータを扱う認証付きモードがあります。カードはテキストとして表示し、カードに含まれるHTMLやJavaScriptは実行しません。画像・音声の転送、ブラウザーからのカード編集や復習回答の書き込みは対象外です。
+この作業はCodexの画面内ではなく、**自分のPCのターミナル**で行います。[Python 3.12](https://www.python.org/downloads/) と [uv](https://docs.astral.sh/uv/getting-started/installation/) をインストールしてください。
 
-## 1. PCのAnkiを準備する
+まだリポジトリを持っていない場合：
 
-1. [Anki公式サイト](https://apps.ankiweb.net/)からデスクトップ版を導入し、自分のプロファイルを開きます。既存のカードがAnkiWebにある場合は、Anki側で自分のアカウントを設定し、通常の同期を済ませます。
-2. 「ツール → アドオン → アドオンを取得」から [AnkiConnect](https://ankiweb.net/shared/info/2055492159)（コード `2055492159`）を導入し、Ankiを再起動します。
-3. AnkiConnectの設定で `apiKey` にパスワード管理ツールなどで生成した十分に長いキーを設定します。接続先の `webBindAddress` は `127.0.0.1`、`webBindPort` は `8765` を使います。キーの変更後はAnkiを再起動します。
+```sh
+git clone --branch feat/anki-dashboard https://github.com/kenken49-2401/anki-synchronizer.git
+cd anki-synchronizer
+```
 
-AnkiConnectのポート8765をインターネットへ公開したり、ルーターで転送したりする必要はありません。PC上のコネクターがクラウドへ送信します。
+既にある場合は、そのフォルダを開き、`feat/anki-dashboard` の今回の変更を取り込んでください。GitHubで変更をmainへ反映した後はmainを使えます。
 
-接続するアカウントを後から変える場合は、デスクトップ版Ankiで対応するプロファイルを開き、コネクターを起動し直します。`--profile` でプロファイル名を指定すると、別のプロファイルが開かれた場合の取り違えを防げます。コネクターは自動でプロファイルを切り替えません。`getActiveProfile` に対応していない古いアドオンでは、プロフィールが1つの環境だけで利用できます。複数ある場合は対応版への更新が必要です。
+## 2. 依存関係と閲覧パスワードを準備する
 
-## 2. 依存関係と秘密ファイルを準備する
-
-Python 3.12と [uv](https://docs.astral.sh/uv/) が必要です。リポジトリのルートで実行します。
+リポジトリのフォルダで、次の2行を実行します。
 
 ```sh
 uv sync --frozen
-uv run --frozen python scripts/dashboard_setup.py --output .dashboard.env
+uv run --frozen python scripts/pages_setup.py
 ```
 
-生成スクリプトは秘密の値を端末に表示せず、既存ファイルを上書きしません。`.dashboard.env` を自分のPC上のエディターで開き、ログイン用パスワードと設定項目を確認します。チャットやGitHubへ貼り付けないでください。
+1行目はアプリに必要なライブラリを `.venv` へ入れます。2行目は強いランダムな閲覧パスワードを作り、**`.pages.env`** へ保存します。既存ファイルは上書きしません。
 
-| 変数 | 用途 |
+`.pages.env` をPCのエディターで開き、`PAGES_PASSWORD=` の右側をパスワード管理ツールへ保管してください。ブラウザーで閲覧するときと、GitHub Secretsの設定に使います。端末出力やチャットへ貼る必要はありません。
+
+- `.pages.env` と `secrets.env` はGitへ追加しません。Windowsでは自分だけが読めるアクセス権も設定してください。
+- **以前の `.dashboard.env`、送信用トークン、Fernetキーは新構成では不要**です。旧サーバー設定を新しい手順へコピーしないでください。
+- パスワードは16～1024 UTF-8バイトに対応しますが、生成された長いランダム値を使ってください。AnkiWebのパスワードとは別です。
+
+## 3. GitHubだけで公開・自動更新する（推奨）
+
+[ACTIONS_SETUP.md](ACTIONS_SETUP.md) の順番で、手元でAnkiWebトークンを取得し、GitHubにSecretsを設定します。Pagesの配信元をGitHub Actionsにして、最初に手動更新を実行します。
+
+GitHub FreeでPagesを利用する標準の方法は公開リポジトリです。公開するのはソースと暗号文で、平文のカード、画像、Ankiのコレクション、鍵は配置しません。PC停止中も、学習した端末からAnkiWebへ同期済みの内容をActionsが定期取得できます。
+
+## 4. PCのAnkiConnectから取り込む（任意）
+
+AnkiWebを使わず、PCで開いているプロフィールを取り込みたい場合の方法です。
+
+1. デスクトップ版Ankiで自分のプロフィールを開きます。
+2. [AnkiConnect](https://ankiweb.net/shared/info/2055492159)（アドオンコード `2055492159`）を導入して再起動します。
+3. AnkiConnectの設定は `webBindAddress=127.0.0.1`、`webBindPort=8765` のまま使い、必要なら `apiKey` を設定します。同じキーを `.pages.env` の `ANKI_CONNECT_API_KEY` に追加します。8765番ポートは公開しません。
+4. 次のコマンドをPCで実行します。
+
+```sh
+uv run --frozen --env-file .pages.env python pages_site.py --source ankiconnect --seed-output pages-data/snapshot.enc.json
+```
+
+必要なら `--profile "自分のプロフィール名"` や `--query 'tag:化学'` を追加できます。現在開いているプロフィールが違う場合は停止し、勝手に切り替えません。古いAnkiConnectではプロフィールが1つの場合のみ識別できます。
+
+作成されるもの：
+
+| 場所 | 中身・扱い |
 | --- | --- |
-| `DASHBOARD_PASSWORD` | ブラウザーのログイン用。12文字以上 |
-| `ANKI_UPLOAD_TOKEN` | コネクターからの送信用。32文字以上。ログイン用とは別 |
-| `DASHBOARD_ENCRYPTION_KEY` | Fernet形式のデータ暗号化キー。生成済みの値を保管 |
-| `DASHBOARD_PUBLIC_URL` | オンライン公開先のHTTPSオリジン（例：`https://YOUR-SERVICE.onrender.com`）。HTTPS終端プロキシ利用時のログイン・Cookieに必要。ローカルでは省略可 |
-| `DASHBOARD_DATA_DIR` | 保存先。ローカルの初期値は `.dashboard-data` |
-| `TZ` | 初期値 `Asia/Tokyo` |
-| `ANKI_CONNECT_API_KEY` | PC上だけで設定。AnkiConnectに設定したAPIキーと同じ値 |
-
-最後の `ANKI_CONNECT_API_KEY` は生成されません。`.dashboard.env` に追加してください。このキーをクラウド側へ渡す必要はありません。Windowsでは秘密ファイルを自分のアカウントだけが読めるようアクセス権を設定してください。
-
-ローカルで画面とログインを確認する場合は次を実行し、PCのブラウザーでポート8000を開きます。
+| `site/` | 配信用の画面と `snapshot.enc.json`。平文データやパスワードは含みません。Gitでは無視されます |
+| `pages-data/snapshot.enc.json` | GitHubへ渡すための暗号化済みシード。これだけを明示的に追加します |
 
 ```sh
-uv run --frozen --env-file .dashboard.env uvicorn dashboard:app --host 127.0.0.1 --port 8000 --workers 1 --no-access-log
+git add pages-data/snapshot.enc.json
+git commit -m "Update encrypted Anki seed"
+git push
 ```
 
-## 3. GitHubとオンライン公開
+コードとシードがデフォルトブランチに反映されたら、Actionsを `source=seed` で手動実行すると、AnkiWebトークンなしでも公開できます。自動更新を有効にしていない場合は、PCでの再取り込み・シード更新・手動公開で更新します。
 
-**GitHubへのソース公開と、個人データを扱うWebアプリの稼働先は別です。** GitHub Pagesは静的ファイルだけを配信し、Pythonサーバーや暗号化データ保存先を実行できません。
-
-- GitHubの公開リポジトリへ置くもの：ソース、テスト、説明書。
-- 公開リポジトリへ置かないもの：`.dashboard.env`、Ankiのコレクション、バックアップ、`.dashboard-data`、アップロード済みのデータ。
-- 個人データを扱う本体：HTTPS対応のPython/Dockerホストで実行します。外部から使うときは必ずHTTPSのURLを使います。
-- 静的な画面デモ：`web/` の内容だけをGitHub Pagesなどへ配信できます。公開URLに `?demo=1` を付けるとサンプルデータを表示します。自分のデータの同期にはサーバーが必要です。
-
-`.github/workflows/dashboard.yml` はコードの検証用です。このワークフローだけでは公開やデプロイは行いません。
-
-静的デモを公開する場合は、アプリのソースと `.github/workflows/pages-demo.yml` をGitHubのデフォルトブランチに置きます。リポジトリの「Settings → Pages → Build and deployment → Source」で **GitHub Actions** を選び、「Actions → Deploy static dashboard demo → Run workflow」で公開するソースのブランチを選んで手動実行します。自動公開は行いません。配信するのは `web/` だけです。完了後のPages URLに `?demo=1` を付けて開いてください。URLに指定がない場合はログイン画面が表示されますが、Pagesでは個人データ用のPython APIは動作しません。
-
-### Pythonサービスとして配置する例：Render
-
-既存の `render.yaml` はChatGPT向けMCPサービス用です。ダッシュボード用には無料プランの `render-dashboard.yaml` を用意しています。Renderで新しいBlueprintを作成し、GitHub上のアプリのソースがあるリポジトリとブランチ、Blueprintのパス `render-dashboard.yaml` を指定します。既存MCPサービスとは別のサービスが作成されます。手動で別のWeb Serviceを作る場合は、次の設定を使います。
-
-```text
-Runtime: Python
-Python Version: 3.12.14
-Build Command: pip install --require-hashes -r requirements.txt
-Start Command: uvicorn dashboard:app --host 0.0.0.0 --port $PORT --workers 1 --no-access-log
-Health Check Path: /api/health
-```
-
-サービスの秘密の環境変数に、ローカルで生成した `DASHBOARD_PASSWORD`、`ANKI_UPLOAD_TOKEN`、`DASHBOARD_ENCRYPTION_KEY` を設定し、`TZ=Asia/Tokyo` を指定します。割り当てられたHTTPS URLを `DASHBOARD_PUBLIC_URL` に設定してください。末尾のパスは含めません。値を公開された設定ファイルに書き込まないでください。
-
-`render-dashboard.yaml` はこの3つの秘密をRender側で入力する設定です。有料ディスクや有料サービスは定義していません。保存先は無料プランの一時領域なので、消失後はPCから再送してください。自動デプロイは無効です。
-
-保存先には次の違いがあります。
-
-| 保存方法 | 設定と性質 |
-| --- | --- |
-| Freeの一時ファイル領域 | `DASHBOARD_DATA_DIR=.dashboard-data`。再起動・再デプロイなどでスナップショットが失われる可能性があります。PCから再送すれば復元できます |
-| 永続ディスク対応のホスト | ディスクを `/data` に接続し、`DASHBOARD_DATA_DIR=/data`。Renderの永続ディスクは有料です。プランと費用を確認して自分で選択してください |
-
-無料サービスは休止や制限があるため、PCが停止している間の継続閲覧を保証しません。永続化できるホストと保存先を用意した場合は、PC停止中も最後に受信したデータを閲覧できます。
-
-### Dockerで配置する場合
-
-`Dockerfile.dashboard` を使います。次の例はホスト内のポート8000にだけ公開するので、HTTPS対応のリバースプロキシまたはホスティングサービスから接続します。
+ローカルで画面を確認する場合：
 
 ```sh
-docker build -f Dockerfile.dashboard -t anki-dashboard .
-docker volume create anki-dashboard-data
-docker run -d --name anki-dashboard --restart unless-stopped \
-  --env-file .dashboard.env \
-  -e DASHBOARD_DATA_DIR=/data \
-  -e DASHBOARD_PUBLIC_URL=https://YOUR-DASHBOARD.example \
-  -p 127.0.0.1:8000:8000 \
-  -v anki-dashboard-data:/data \
-  anki-dashboard
+uv run --frozen python -m http.server 8000 --bind 127.0.0.1 --directory site
 ```
 
-複数ワーカーや複数インスタンスで同じファイルを共有する構成には対応していません。`--workers 1` で動かしてください。
+PCのブラウザーでlocalhostの8000番を開き、`.pages.env` の閲覧パスワードを入力します。サーバーに復号処理はありません。
 
-## 4. PCから自分のカードを送信する
+## カードをフォルダごとにまとめる
 
-クラウドの起動後、Web画面で `.dashboard.env` の `DASHBOARD_PASSWORD` を使ってログインします。初回はまだカードがない状態です。
+「タグ別カード」の **まとめ方**、または「接続・設定」の **カードのまとめ方** で選びます。
 
-Ankiを開いたPCで、次を実行します。`https://YOUR-DASHBOARD.example` は実際のHTTPS URLへ置き換えます。
+- **一覧**：従来どおり、まとめずに並べます。
+- **デッキごと**：`科学::化学`、`科学::化学::高分子` を別の見出しに分けます。
+- **親フォルダごと**：上記を最上位の `科学` にまとめます。
 
-```sh
-uv run --frozen --env-file .dashboard.env python connector.py \
-  --server https://YOUR-DASHBOARD.example \
-  --token-env ANKI_UPLOAD_TOKEN \
-  --api-key-env ANKI_CONNECT_API_KEY \
-  --timezone Asia/Tokyo
-```
+Ankiのフォルダはデッキ／サブデッキに対応します。絞り込みにはカードのない親デッキも現れます。「サブデッキを含める」を外すと、選択したデッキ直下だけになります。`科学` と `科学館` は混ざりません。タグ・検索・並び順・ページ送りと併用でき、まとめ方の設定はこのブラウザーへ保存します。デッキ名・カード本文・パスワードはブラウザーの永続ストレージへ保存しません。
 
-継続して取り込みたい場合は `--watch 300` を追加すると、PCとAnkiが動作している間は300秒ごとに送信します。間隔は30秒以上にしてください。特定のプロファイルに限定する場合は `--profile "自分のプロファイル名"` も追加します。AnkiConnectのAPIキーとアップロード用トークンは環境変数から読み込み、コマンド引数へ直接書きません。
+Markdown保存は、画面と同じまとめ方でPCへ書き出します。ダウンロードしたMarkdownは平文なので、公開リポジトリへ追加しないでください。
 
-送信後、Web画面で自分のプロファイル、カード、タグ、最終同期日時を確認します。元のAnkiでカードや学習履歴があることも確認してください。`/api/health` の成功だけではAnki接続・データ送信の成功を確認できません。
+## 暗号化と表示の範囲
 
-## PCのスリープ中の動作
+PBKDF2-SHA256（600,000回・ランダムsalt）から256ビット鍵を作り、AES-GCM（ランダムnonce・認証タグ）でカード・履歴・画像・プロフィール名をまとめて暗号化します。ブラウザーのWeb Cryptoで復号し、画像はメモリー内のBlob URLで表示します。パスワードは送信せず、復号キーはメモリー内だけに保持します。ログアウト・再読み込みで再度パスワードが必要です。
 
-AnkiConnectはデスクトップ版Ankiのアドオンなので、PCのスリープ中やAnki終了中は新しいデータを読み取れません。クラウドは最後に受信したデータを表示し、次にPCが復帰してコネクターが送信すると更新します。スマートフォンで学習した直後の履歴も、PCのAnkiへ通常同期してから送信する必要があります。
+暗号文は誰でもダウンロードできます。生成した強いパスワードを使い、ソースを書き換えられる人やGitHub自体も信頼する必要があります。パスワードが漏れた場合、過去に公開した暗号文も読まれる可能性があります。ブラウザー上の平文を共有端末や拡張機能から完全に隠す仕組みではありません。
 
-PCが停止していてもAnkiWebから直接取り込む自動同期は、このダッシュボードには実装していません。リポジトリ内の既存MCPサービスにあるAnkiWeb同期は別機能で、このダッシュボードの自動同期には接続していません。
+画像はPNG/JPEG/GIF/WebP、下付き・上付き文字や基本的な表に対応します。カードのスクリプト・外部画像URL・SVG・音声・MathJaxの実行はしません。未取得／未対応の画像は「画像未取得」と表示します。AnkiWebの画像取得は `begin` と `downloadFiles` の読み取りAPIのみです。
 
-## 成績の読み方
+パッケージの平文は32 MiB、カード50,000枚、履歴1,000,000件、画像500個・各2 MiB・合計16 MiBまでです。超過や取得失敗時は公開を行わず、最後の成功したサイトを維持します。
 
-正解率は、Ankiの回答評価を基に集計する指標です。「もう一度」を不正解、「難しい・普通・簡単」を正解として扱うため、試験の正答率や、カード内容をAIが採点した結果ではありません。スケジュールの変更など学習回答ではない履歴は除外します。未回答のカードは履歴なしとして表示します。
+正解率はAgainを不正解、Hard/Good/Easyを正解とした自己評価の割合です。学習時間はAnkiの回答時間の合計で、休憩・閲覧時間は含みません。日付の区切りは画面で選んだタイムゾーンです。
 
-学習時間はAnkiの復習履歴に記録された回答時間の合計です。Ankiを開いていた総時間や、アプリの閲覧時間ではありません。Ankiの回答時間の上限設定や、記録のない過去の学習は反映できません。日付は画面の「接続・設定」で選んだタイムゾーン（初期値は日本）で区切ります。コネクターの `--timezone` は送信元の情報として保存されます。
-
-## バックアップと動作確認
-
-保存ファイルは `DASHBOARD_DATA_DIR/snapshot.fernet` です。このファイルと暗号化キーを別々の安全な場所へ保管します。暗号化キーを失うと保存済みデータを復号できません。PCに元のAnkiが残っている場合は、新しいキーで起動して再送できます。
-
-アップロードは最大32 MiB、カードは50,000枚、復習履歴は1,000,000件までです。上限を超えたデータは切り捨てず拒否されます。必要に応じてコネクターに `--query 'tag:英語'` などのAnki検索条件を付け、送信対象を絞ってください。保存するのは最新のスナップショット1つで、複数プロファイルのデータは合算しません。暗号化して保存しますが、表示や処理のためにサーバー上では復号するので、信頼できる運営先へ配置してください。
-
-開発時の確認コマンドです。外部のAnkiWebアカウントを使う操作は含みません。
+## 開発・検証
 
 ```sh
 uv sync --frozen
 uv run --frozen pytest -q
-node --check web/app.js
-node --check web/stats.mjs
-node --test tests/stats.test.mjs
+node --test tests/*.test.mjs
 ```
 
-自分のPCとの実接続では、Ankiを起動 → 1回送信 → Webでタグと成績を確認 → サーバー再起動後に再確認、の順で検証します。デモの表示成功は、自分のアカウントとの同期成功を意味しません。
-
-今回の検証結果と未検証の範囲は [DASHBOARD_VERIFICATION.md](DASHBOARD_VERIFICATION.md) に記録しています。
-
-## PC停止中も更新する場合
-
-[GitHub ActionsによるAnkiWeb自動取り込み](ACTIONS_SETUP.md)を利用できます。こちらはAnkiConnectを使わず、AnkiWebからカード・タグ・復習履歴を3時間ごとにダウンロードします。Secretsと明示的な有効化が必要です。図はPCから最初に取り込み、以降のAnkiWeb更新では同じ名前の取り込み済み図を保持します。
+[検証結果](DASHBOARD_VERIFICATION.md)。旧MCPやサーバー方式のソースは互換用に残っていますが、新しいPages構成では `server:app`、`dashboard:app`、`render-dashboard.yaml`、`Dockerfile.dashboard` を使いません。

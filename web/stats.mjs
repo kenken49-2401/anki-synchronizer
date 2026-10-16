@@ -107,14 +107,22 @@ export function summarize(
 
 export function filterCards(
   cards,
-  { tag = "", deck = "", query = "", sort = "default" } = {},
+  {
+    tag = "",
+    deck = "",
+    includeSubdecks = false,
+    query = "",
+    sort = "default",
+  } = {},
   byCard = new Map(),
 ) {
   const q = query.trim().toLocaleLowerCase();
   const selected = cards.filter(
     (c) =>
       (!tag || (tag === "タグなし" ? !c.tags.length : c.tags.includes(tag))) &&
-      (!deck || c.deck === deck) &&
+      (!deck ||
+        c.deck === deck ||
+        (includeSubdecks && c.deck.startsWith(deck + "::"))) &&
       (!q ||
         [c.front, c.back, c.deck, ...c.tags, ...Object.values(c.fields || {})]
           .join(" ")
@@ -134,6 +142,38 @@ export function filterCards(
       (a, b) => (byCard.get(b.id)?.last || 0) - (byCard.get(a.id)?.last || 0),
     );
   return selected;
+}
+
+// Anki separates a deck from its subdecks with ::, not a loose string prefix.
+export function deckTree(cards) {
+  const nodes = new Map();
+  for (const card of cards) {
+    const parts = card.deck.split("::");
+    for (let depth = 0; depth < parts.length; depth++) {
+      const name = parts.slice(0, depth + 1).join("::");
+      const node = nodes.get(name) || { name, depth, count: 0, directCount: 0 };
+      node.count++;
+      if (depth === parts.length - 1) node.directCount++;
+      nodes.set(name, node);
+    }
+  }
+  return [...nodes.values()].sort((a, b) =>
+    a.name.localeCompare(b.name, "ja", { numeric: true }),
+  );
+}
+
+export function groupCards(cards, mode = "none") {
+  if (!["deck", "folder"].includes(mode))
+    return [{ name: "", cards: [...cards] }];
+  const groups = new Map();
+  for (const card of cards) {
+    const name = mode === "folder" ? card.deck.split("::")[0] : card.deck;
+    if (!groups.has(name)) groups.set(name, []);
+    groups.get(name).push(card);
+  }
+  return [...groups]
+    .sort(([a], [b]) => a.localeCompare(b, "ja", { numeric: true }))
+    .map(([name, items]) => ({ name, cards: items }));
 }
 
 export function percent(correct, count) {
