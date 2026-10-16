@@ -31,5 +31,6 @@ jobs:
           node --check web/stats.mjs
           node --check web/vault.mjs
           node --check web/tags.mjs
+          node --check web/tag-queue.mjs
       - name: Verify learning statistics
         run: node --test tests/*.test.mjs

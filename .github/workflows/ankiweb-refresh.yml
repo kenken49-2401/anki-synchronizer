@@ -2,7 +2,7 @@ name: Publish encrypted Anki Pages
 
 "on":
   schedule:
-    - cron: "17 */3 * * *"
+    - cron: "17 * * * *"
   workflow_dispatch:
     inputs:
       source:
@@ -35,6 +35,7 @@ jobs:
     permissions:
       contents: read
       pages: read
+      issues: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -45,6 +46,15 @@ jobs:
         with:
           python-version: 3.12.14
           enable-cache: true
+      - name: Import owner-approved encrypted tag requests into AnkiWeb
+        if: vars.ANKI_TAG_IMPORT_ENABLED != 'false' && inputs.source != 'seed'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ANKI_TAG_IMPORT_ENABLED: ${{ vars.ANKI_TAG_IMPORT_ENABLED || 'true' }}
+          PAGES_PASSWORD: ${{ secrets.PAGES_PASSWORD }}
+          ANKIWEB_HKEY: ${{ secrets.ANKIWEB_HKEY }}
+          ANKIWEB_ENDPOINT: ${{ secrets.ANKIWEB_ENDPOINT }}
+        run: uv run --frozen python github_tag_queue.py
       - name: Read Anki, encrypt data and images, build static site
         env:
           PAGES_PASSWORD: ${{ secrets.PAGES_PASSWORD }}

@@ -160,11 +160,16 @@ def test_workflow_publishes_ciphertext_only_and_never_uses_render():
     import yaml
     workflow = yaml.safe_load((pages_site.ROOT / ".github/workflows/ankiweb-refresh.yml").read_text())
     assert "pull_request" not in workflow["on"]
-    assert workflow["on"]["schedule"][0]["cron"] == "17 */3 * * *"
+    assert workflow["on"]["schedule"][0]["cron"] == "17 * * * *"
     build = workflow["jobs"]["build"]
     assert "ANKI_AUTO_SYNC_ENABLED" in build["if"]
     steps = build["steps"]
-    command = next(step for step in steps if "run" in step)
+    command = next(step for step in steps if "pages_site.py" in step.get("run", ""))
+    queue = next(step for step in steps if "github_tag_queue.py" in step.get("run", ""))
+    assert steps.index(queue) < steps.index(command)
+    assert "inputs.source != 'seed'" in queue["if"]
+    assert build["permissions"]["issues"] == "write"
+    assert "GITHUB_TOKEN" not in command["env"]
     assert "pages_site.py" in command["run"]
     assert "ANKI_UPLOAD_TOKEN" not in command["env"] and "DASHBOARD_URL" not in command["env"]
     upload = next(step for step in steps if step.get("uses", "").startswith("actions/upload-pages-artifact"))

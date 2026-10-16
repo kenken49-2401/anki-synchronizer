@@ -14,6 +14,7 @@ import {
   validateChanges,
   withTagChanges,
 } from "./tags.mjs";
+import { tagRequest, unconfirmedTags, TAG_REPOSITORY } from "./tag-queue.mjs";
 import {
   summarize,
   filterCards,
@@ -273,12 +274,13 @@ async function restoreTagDraft(snapshot) {
     const changes = new Map(data.changes.map((c) => [c.note_id, c]));
     withTagChanges(snapshot, changes);
     state.tagChanges = changes;
+    await reconcileTagDraft(snapshot);
   } catch {
     state.tagRecoveryError = true;
   }
 }
 
-async function persistTags() {
+async function persistTags(snapshot = state.baseSnapshot) {
   if (state.demo) return;
   if (state.tagRecoveryError)
     throw new Error(
@@ -297,15 +299,72 @@ async function persistTags() {
     return;
   }
   const key = state.masterKey;
-  const data = await encryptData(
-    tagPayload(state.baseSnapshot, state.tagChanges),
-    key,
-  );
+  const data = await encryptData(tagPayload(snapshot, state.tagChanges), key);
   if (key !== state.masterKey) return;
   checkVersion();
   const encoded = JSON.stringify(data);
   localStorage.setItem("atlas-tag-draft", encoded);
   state.tagStoredVersion = encoded;
+}
+
+async function reconcileTagDraft(snapshot) {
+  const pending = unconfirmedTags(snapshot, state.tagChanges);
+  if (
+    JSON.stringify([...pending.values()]) ===
+    JSON.stringify([...state.tagChanges.values()])
+  )
+    return;
+  state.tagChanges = pending;
+  try {
+    await persistTags(snapshot);
+    state.tagStorageError = false;
+  } catch {
+    state.tagStorageError = true;
+  }
+}
+
+function openTagQueue() {
+  if (state.demo) {
+    toast("デモの変更は送信できません。");
+    return;
+  }
+  if (state.tagBusy || state.busy || !state.tagChanges.size) return;
+  try {
+    if (
+      state.tagRecoveryError ||
+      state.tagStorageError ||
+      !state.tagStoredVersion ||
+      localStorage.getItem("atlas-tag-draft") !== state.tagStoredVersion
+    )
+      throw new Error(
+        "下書きの保存状態を確認してください。別のタブで変更した場合は、必要なファイルを保存して読み直してください。",
+      );
+    const request = tagRequest(state.tagStoredVersion);
+    $("#tag-queue-dialog")?.remove();
+    const dialog = document.createElement("dialog");
+    dialog.id = "tag-queue-dialog";
+    dialog.innerHTML = `<h2>スマホからAnkiへタグを送る</h2><p>先にスマホのAnkiで同期してください。同じノートを同時に編集しないでください。</p><ol><li>${request.prefilled ? "次のボタンでGitHubを開きます。暗号化データは入力済みです。" : "「暗号化データをコピー」を押し、GitHubを開いたら本文へ貼り付けます。"}</li><li>自分のGitHubアカウントで <strong>Create issue</strong> を押すと送信が確定します。</li><li>毎時のActionsが反映を確認するとリクエストを閉じます。その後スマホのAnkiで同期してください。</li></ol><p class="small muted">送信先：${esc(TAG_REPOSITORY)}。初回は自動更新の有効化が必要です。端末の下書きを消しても送信済みリクエストは取り消されません。</p>${!request.prefilled ? '<label for="tag-request-body">暗号化データ（本文へ貼り付け）</label><textarea id="tag-request-body" readonly></textarea><button class="button subtle" id="copy-tag-request">暗号化データをコピー</button>' : ""}<div class="tag-sync-actions"><a class="button primary" href="${esc(request.url)}" target="_blank" rel="noopener noreferrer">GitHubで送信を確定</a><form method="dialog"><button class="button subtle">閉じる</button></form></div><p class="small muted">GitHubに送るのは暗号文です。パスワードは送信しません。送信前・処理前ならリクエストを閉じて取り消せます。</p>`;
+    document.body.append(dialog);
+    if (!request.prefilled) {
+      dialog.querySelector("textarea").value = request.body;
+      dialog
+        .querySelector("#copy-tag-request")
+        .addEventListener("click", async () => {
+          try {
+            await navigator.clipboard.writeText(request.body);
+            toast(
+              "暗号化データをコピーしました。GitHubの本文へ貼り付けてください。",
+            );
+          } catch {
+            dialog.querySelector("textarea").select();
+            toast("本文を選択しました。コピーしてGitHubに貼り付けてください。");
+          }
+        });
+    }
+    dialog.showModal();
+  } catch (err) {
+    toast(err.message);
+  }
 }
 
 async function saveTagChange(changes) {
@@ -327,7 +386,7 @@ async function saveTagChange(changes) {
   toast(
     state.tagStorageError
       ? "端末に保存できません。変更ファイルを書き出してください。"
-      : "タグの下書きを保存しました。Ankiへの反映にはPCで取り込んでください。",
+      : "タグの下書きを保存しました。「スマホから送信」でAnkiへの反映を予約できます。",
   );
 }
 
@@ -604,7 +663,7 @@ function groupingSelect(id) {
 }
 function tagSyncPanel(help = false) {
   const count = state.tagChanges.size;
-  return `<section class="panel tag-sync-panel" aria-label="Ankiへ戻すタグ変更"><div><h2>Ankiへ戻すタグ変更 <span class="chip">${count} ノート</span></h2><p>${state.tagRecoveryError ? "以前の下書きを復元できません。以前の閲覧パスワードで開くか、ファイルを保存してから取り消してください。" : state.tagStorageError ? "端末への保存に失敗しました。ページを閉じる前に変更ファイルを保存してください。" : count ? "タグを追加しました。端末には暗号化して保存済みです。Ankiへの反映はPCでの取り込み後です。" : "カードを読んで付けたタグを、PCのAnkiへ取り込めます。"}</p></div><div class="tag-sync-actions"><button class="button primary small" data-export-tags ${!count && !state.tagRecoveryError ? "disabled" : ""}>${icon("download", 16)}${state.tagRecoveryError ? "下書きファイルを保存" : "タグ変更ファイルを保存"}</button><button class="button subtle small" data-clear-tags ${!count && !state.tagRecoveryError ? "disabled" : ""}>下書きを取り消す</button></div>${help ? '<p class="small muted">保存した暗号化ファイルをPCへ移し、DASHBOARD.mdの「追加したタグをAnkiへ戻す」に従って取り込んでください。閲覧パスワードで復号します。取り込み後は下書きを取り消し、次のPages更新を読み込んでください。</p>' : '<button class="text-button" data-go-settings>取り込み方法を見る →</button>'}</section>`;
+  return `<section class="panel tag-sync-panel" aria-label="Ankiへ戻すタグ変更"><div><h2>Ankiへ戻すタグ変更 <span class="chip">${count} ノート</span></h2><p>${state.tagRecoveryError ? "以前の下書きを復元できません。以前の閲覧パスワードで開くか、ファイルを保存してから取り消してください。" : state.tagStorageError ? "端末への保存に失敗しました。ページを閉じる前に変更ファイルを保存してください。" : count ? "タグを追加しました。端末には暗号化して保存済みです。「スマホから送信」で次の毎時同期に回せます。" : "カードを読んで付けたタグを、スマホからAnkiWebへ送れます。"}</p></div><div class="tag-sync-actions"><button class="button primary small" data-queue-tags ${!count || state.tagRecoveryError || state.tagStorageError ? "disabled" : ""}>スマホから送信</button><button class="button subtle small" data-export-tags ${!count && !state.tagRecoveryError ? "disabled" : ""}>${icon("download", 16)}${state.tagRecoveryError ? "下書きファイルを保存" : "タグ変更ファイルを保存"}</button><button class="button subtle small" data-clear-tags ${!count && !state.tagRecoveryError ? "disabled" : ""}>下書きを取り消す</button></div>${help ? '<p class="small muted">「スマホから送信」でGitHubを開き、Create issueを押すと受け付けられます。毎時のActionsがAnkiWebへ反映した後、スマホのAnkiで同期してください。初回はACTIONS_SETUP.mdに従って自動更新を有効化します。PCでのファイル取り込みも引き続き使えます。</p>' : '<button class="text-button" data-go-settings>取り込み方法を見る →</button><a class="text-button" href="https://github.com/kenken49-2401/anki-synchronizer/issues" target="_blank" rel="noopener noreferrer">送信済みリクエストを見る ↗</a>'}</section>`;
 }
 
 function tagEditor(c) {
@@ -782,6 +841,9 @@ function paintCharts() {
 }
 function bindView() {
   document
+    .querySelectorAll("[data-queue-tags]")
+    .forEach((el) => el.addEventListener("click", openTagQueue));
+  document
     .querySelectorAll("[data-export-tags]")
     .forEach((el) => el.addEventListener("click", exportTags));
   document.querySelectorAll("[data-clear-tags]").forEach((el) =>
@@ -789,7 +851,7 @@ function bindView() {
       if (
         state.tagBusy ||
         !confirm(
-          "まだAnkiへ反映していない変更も取り消されます。下書きを取り消しますか？",
+          "端末の下書きを取り消しますか？送信済みの変更は、GitHubのIssueを処理前に閉じて取り消してください。",
         )
       )
         return;
@@ -891,7 +953,7 @@ function bindCards() {
   document.querySelectorAll("[data-note-tags]").forEach((form) =>
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
-      if (state.tagBusy) return;
+      if (state.tagBusy || state.busy) return;
       if (state.tagRecoveryError) {
         toast("以前の下書きを保存して取り消してから、タグを追加してください。");
         return;
@@ -911,7 +973,7 @@ function bindCards() {
   );
   document.querySelectorAll("[data-undo-tags]").forEach((el) =>
     el.addEventListener("click", async () => {
-      if (state.tagBusy) return;
+      if (state.tagBusy || state.busy) return;
       const next = new Map(state.tagChanges);
       next.delete(Number(el.dataset.undoTags));
       await saveTagChange(next);
@@ -993,6 +1055,7 @@ async function refresh(notify = false) {
     const urls = state.demo ? new Map() : await createMediaURLs(snapshot);
     revokeMediaURLs(state.mediaURLs);
     state.mediaURLs = urls;
+    await reconcileTagDraft(snapshot);
     setSnapshot(snapshot);
     shell();
     if (notify)
