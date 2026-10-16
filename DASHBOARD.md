@@ -24,11 +24,11 @@ PC / スマホのAnki → AnkiWebへの通常同期
 まだリポジトリを持っていない場合：
 
 ```sh
-git clone --branch feat/anki-dashboard https://github.com/kenken49-2401/anki-synchronizer.git
+git clone --branch main https://github.com/kenken49-2401/anki-synchronizer.git
 cd anki-synchronizer
 ```
 
-既にある場合は、そのフォルダを開き、`feat/anki-dashboard` の今回の変更を取り込んでください。GitHubで変更をmainへ反映した後はmainを使えます。
+既にある場合は、そのフォルダを開き、作業中の変更を保管してから最新の `main` を取り込んでください。
 
 ## 2. 依存関係と閲覧パスワードを準備する
 

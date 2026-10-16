@@ -2,9 +2,21 @@
 
 **Renderや別のサーバー契約は不要**です。ActionsがAnkiWebのカード・タグ・履歴・参照画像を読み取り、暗号化してPagesへ配信します。閲覧パスワードはブラウザー内の復号に使います。
 
+## 運用開始までの残りの設定
+
+コードは `main` から利用できます。実アカウントの認証情報、Pages公開、定期更新はまだ有効になっていません。
+
+1. [Pages設定](https://github.com/kenken49-2401/anki-synchronizer/settings/pages)で配信元を **GitHub Actions** にする。現在のリポジトリは非公開です。非公開Pagesに対応するプランが必要です。無料の公開リポジトリ方式を選ぶ場合は、公開範囲と履歴を確認してから変更してください。
+2. 自分のPCで以下の手順2を実行し、閲覧パスワードとAnkiWebトークンを作る。
+3. [Environments設定](https://github.com/kenken49-2401/anki-synchronizer/settings/environments)で `anki-sync` を作り、手順3のSecretsを登録する。
+4. [公開ワークフロー](https://github.com/kenken49-2401/anki-synchronizer/actions/workflows/ankiweb-refresh.yml)を `source=ankiweb` で手動実行し、公開画面を確認する。
+5. [Actions Variables](https://github.com/kenken49-2401/anki-synchronizer/settings/variables/actions)に `ANKI_AUTO_SYNC_ENABLED=true` を登録する。
+
+クラウド環境のGitHub連携には設定APIの権限がなく、Pages・Environment・Secretsの操作は403で拒否されました。設定はGitHub画面で行ってください。秘密の値をチャットへ送る必要はありません。
+
 ## 1. コードをmainへ反映し、Pagesを有効にする
 
-1. `feat/anki-dashboard` の変更をデフォルトブランチ（このリポジトリでは `main`）へ反映します。GitHub上でPull requestを作成・確認してマージできます。
+1. デフォルトブランチの `main` を使います。今後の変更を別ブランチで作る場合は、公開前に `main` へ反映してください。
 2. リポジトリの **Settings → Pages → Build and deployment → Source** を **GitHub Actions** にします。
 3. GitHub Freeでの標準のPages公開は公開リポジトリを使います。公開されるデータは暗号文です。アカウントのプラン条件はGitHubで確認してください。
 
@@ -26,7 +38,7 @@ uv run --frozen python scripts/ankiweb_token.py
 
 PCのエディターでファイルを開き、次のGitHub設定へ値だけを移します。ファイルをコミットしたり、チャットやログへ値を貼ったりしないでください。AnkiWebのパスワードそのものはGitHubへ登録しません。Windowsでは自分だけが読めるファイルアクセス権も設定します。
 
-以前のサーバー方式の `DASHBOARD_PASSWORD`、`ANKI_UPLOAD_TOKEN`、`DASHBOARD_ENCRYPTION_KEY`、`DASHBOARD_URL`、Render設定は新構成では不要です。旧トークン取得スクリプトの完了文にRenderと表示される場合でも、値は以下のGitHub Secretsへ設定します。
+以前のサーバー方式の `DASHBOARD_PASSWORD`、`ANKI_UPLOAD_TOKEN`、`DASHBOARD_ENCRYPTION_KEY`、`DASHBOARD_URL`、Render設定は新構成では不要です。値は以下のGitHub Secretsへ設定します。
 
 ## 3. GitHub Secretsを設定する
 
