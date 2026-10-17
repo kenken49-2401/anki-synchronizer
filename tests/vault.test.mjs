@@ -139,3 +139,31 @@ test("encrypted image chunks load only from safe same-site names and validate th
     await assert.rejects(createMediaURLs({...empty,media_packages:[filename]},await importPassword("wrong-password-12345678")));
   } finally { globalThis.fetch = original; }
 });
+
+test("image index defers downloads, bounds decrypted cache and closes on logout", async () => {
+  const key = await importPassword(password);
+  const packages=[], index={}, bodies=new Map(), ids=[];
+  const png=Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jf4sAAAAASUVORK5CYII=","base64");
+  for(let i=0;i<9;i++) {
+    const bytes=Buffer.concat([png,Buffer.from([i])]);
+    const id=Buffer.from(await crypto.subtle.digest("SHA-256",bytes)).toString("hex");
+    const name="media-"+i.toString(16).padStart(64,"0")+".enc.json";
+    packages.push(name);index[id]=name;ids.push(id);
+    bodies.set("./"+name,await encryptData({schema_version:1,media:{[i+".png"]:{id,mime:"image/png",data:bytes.toString("base64")}}},key));
+  }
+  const original=globalThis.fetch, calls=[];
+  globalThis.fetch=async (url,options)=>{calls.push(url);assert.equal(options.credentials,"omit");return new Response(JSON.stringify(bodies.get(url)));};
+  try {
+    const urls=await createMediaURLs({...empty,media_packages:packages,media_index:index},key);
+    assert.equal(calls.length,0);
+    for(const id of ids) assert.ok((await urls.loadImage(id)).startsWith("blob:"));
+    assert.equal(urls.size,8);
+    assert.equal(urls.has(ids[0]),false);
+    assert.equal(calls.length,9);
+    await urls.loadImage(ids[8]);assert.equal(calls.length,9);
+    revokeMediaURLs(urls);assert.equal(urls.size,0);
+    await assert.rejects(urls.loadImage(ids[8]));
+    assert.equal(calls.length,9);
+    await assert.rejects(createMediaURLs({...empty,media_packages:packages,media_index:{[ids[0]]:"https://evil.test/private"}},key));
+  } finally {globalThis.fetch=original;}
+});

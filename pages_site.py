@@ -16,7 +16,7 @@ from urllib.parse import urlsplit
 import httpx
 from anki import errors as anki_errors
 
-from card_media import MAX_TOTAL_BYTES, validate_media
+from card_media import MAX_TOTAL_BYTES, MAX_MEDIA_FILES, validate_media
 from cloud_sync import export_snapshot as export_ankiweb
 from connector import ConnectorError, export_snapshot as export_local
 from dashboard import SnapshotValidationError, validate_snapshot
@@ -29,7 +29,7 @@ ASSETS = {"index.html", "app.js", "styles.css", "stats.mjs", "vault.mjs", "tags.
 BUILD_FILE = "release.json"
 MEDIA_FILE = re.compile(r"media-[a-f0-9]{64}\.enc\.json")
 MEDIA_CHUNK_BYTES = 4 * 1024 * 1024
-MAX_MEDIA_PACKAGES = 128
+MAX_MEDIA_PACKAGES = 256
 
 
 def load_package(path: Path, password: str) -> dict:
@@ -95,6 +95,8 @@ def hydrate_media(snapshot: dict, password: str, read_chunk) -> dict:
         if part.get("schema_version") != 1 or not isinstance(part.get("media"), dict):
             raise PackageError("Invalid encrypted image chunk.")
         additions = validate_media(part["media"])
+        if len(media) + len(additions) > MAX_MEDIA_FILES:
+            raise PackageError("Encrypted image count exceeds the supported limit.")
         if media.keys() & additions.keys():
             raise PackageError("Duplicate encrypted images.")
         total += sum((len(item["data"]) * 3 // 4 - item["data"].count("=")) for item in additions.values())
@@ -104,6 +106,7 @@ def hydrate_media(snapshot: dict, password: str, read_chunk) -> dict:
     if packages:
         snapshot = {**snapshot, "media": validate_media(media)}
         snapshot.pop("media_packages", None)
+        snapshot.pop("media_index", None)
     return snapshot
 
 
@@ -112,11 +115,15 @@ def split_media(snapshot: dict, password: str) -> tuple[dict, dict[str, bytes]]:
     if sum(len(item["data"]) + len(name) + 512 for name, item in media.items()) <= MEDIA_CHUNK_BYTES:
         return snapshot, {}
     chunks = {}
+    index = {}
     batch = {}
     size = 0
     def finish():
         encoded = json.dumps(encrypt({"schema_version": 1, "media": batch}, password), separators=(",", ":")).encode()
-        chunks["media-" + hashlib.sha256(encoded).hexdigest() + ".enc.json"] = encoded
+        name = "media-" + hashlib.sha256(encoded).hexdigest() + ".enc.json"
+        chunks[name] = encoded
+        for item in batch.values():
+            index[item["id"]] = name
     for name, item in sorted(media.items()):
         cost = len(item["data"]) + len(name) + 512
         if batch and size + cost > MEDIA_CHUNK_BYTES:
@@ -128,7 +135,7 @@ def split_media(snapshot: dict, password: str) -> tuple[dict, dict[str, bytes]]:
         finish()
     if len(chunks) > MAX_MEDIA_PACKAGES:
         raise PackageError("Too many encrypted image chunks.")
-    return {**snapshot, "media": {}, "media_packages": list(chunks)}, chunks
+    return {**snapshot, "media": {}, "media_packages": list(chunks), "media_index": index}, chunks
 
 
 def restore_source(snapshot: dict) -> dict:

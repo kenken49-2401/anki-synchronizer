@@ -339,3 +339,21 @@ def test_sharded_image_tampering_stops_loading(tmp_path, monkeypatch):
     chunk.write_text(json.dumps(package))
     with pytest.raises(PackageError):
         pages_site.load_package(site / pages_site.PACKAGE_NAME, PASSWORD)
+
+
+def test_more_than_16_mib_images_keep_main_package_small(tmp_path):
+    raw = with_image()
+    raw['media'] = {}
+    images = []
+    for i in range(9):
+        name = f'large-{i}.png'
+        image = PNG + bytes([i]) * (2 * 1024 * 1024 - len(PNG))
+        raw['media'][name] = {'mime': 'image/png', 'data': base64.b64encode(image).decode()}
+        images.append(f'<img src="{name}">')
+    raw['cards'][0]['front'] = '<div>Large image collection</div>' + ''.join(images)
+    site = tmp_path / 'site'
+    pages_site.build_site(pages_site.prepare_snapshot(raw), PASSWORD, site)
+    assert (site / pages_site.PACKAGE_NAME).stat().st_size < 100000
+    restored = pages_site.load_package(site / pages_site.PACKAGE_NAME, PASSWORD)
+    assert len(restored['media']) == 9
+    assert len(list(site.glob('media-*.enc.json'))) >= 2

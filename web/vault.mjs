@@ -213,7 +213,7 @@ export async function createMediaURLs(snapshot, masterKey) {
       total += bytes.length;
       if (
         bytes.length > 2 * 1024 * 1024 ||
-        total > 128 * 1024 * 1024 ||
+        total > 512 * 1024 * 1024 ||
         !validRaster(bytes, item.mime)
       )
         throw new Error();
@@ -233,7 +233,55 @@ export async function createMediaURLs(snapshot, masterKey) {
   try {
     await addMedia(snapshot.media || {});
     const packages = snapshot.media_packages || [];
-    if (!Array.isArray(packages) || packages.length > 128 || new Set(packages).size !== packages.length) throw new Error();
+    if (!Array.isArray(packages) || packages.length > 256 || new Set(packages).size !== packages.length) throw new Error();
+    if (snapshot.media_index !== undefined) {
+      if (!masterKey || !snapshot.media_index || typeof snapshot.media_index !== "object" || Array.isArray(snapshot.media_index)) throw new Error();
+      const entries = Object.entries(snapshot.media_index);
+      const allowed = new Set(packages);
+      if (entries.length > 10000 || packages.some(name => typeof name !== "string" || !/^media-[a-f0-9]{64}\.enc\.json$/.test(name))) throw new Error();
+      for (const [id, name] of entries) if (!/^[a-f0-9]{64}$/.test(id) || !allowed.has(name)) throw new Error();
+      const index = new Map(entries), pending = new Map(), cache = new Map(), owners = new Map();
+      let closed = false, queue = Promise.resolve();
+      urls.close = () => { closed = true; cache.clear(); };
+      urls.loadImage = async (id) => {
+        if (closed || !index.has(id)) throw new Error("画像を読み込めません。");
+        const name = index.get(id);
+        if (urls.has(id)) {
+          if (cache.has(name)) { const item = cache.get(name); cache.delete(name); cache.set(name, item); }
+          return urls.get(id);
+        }
+        if (!pending.has(name)) {
+          const task = queue.then(async () => {
+            if (closed) throw new Error("画像の読み込みを中止しました。");
+            const part = await decryptData(await fetchPackage("./" + name, 8 * 1024 * 1024), masterKey);
+            if (part?.schema_version !== 1 || !part.media || part.media_index || part.media_packages) throw new Error("画像データの形式が正しくありません。");
+            const loaded = await createMediaURLs({media:part.media}, masterKey);
+            if (closed) { revokeMediaURLs(loaded); throw new Error("画像の読み込みを中止しました。"); }
+            const ids = [];
+            for (const [hash, url] of loaded) {
+              if (index.get(hash) !== name || urls.has(hash)) { URL.revokeObjectURL(url); continue; }
+              urls.set(hash, url); owners.set(hash, name); ids.push(hash);
+            }
+            cache.set(name, ids);
+            // At most eight small decrypted image packages remain in memory.
+            while (cache.size > 8) {
+              const oldest = cache.keys().next().value;
+              for (const hash of cache.get(oldest)) if (owners.get(hash) === oldest) {
+                URL.revokeObjectURL(urls.get(hash)); urls.delete(hash); owners.delete(hash);
+              }
+              cache.delete(oldest);
+            }
+          });
+          queue = task.catch(() => {});
+          pending.set(name, task);
+          task.finally(() => pending.delete(name)).catch(() => {});
+        }
+        await pending.get(name);
+        if (closed || !urls.has(id)) throw new Error("画像を読み込めません。");
+        return urls.get(id);
+      };
+      return urls;
+    }
     for (const name of packages) {
       if (!masterKey || typeof name !== "string" || !/^media-[a-f0-9]{64}\.enc\.json$/.test(name)) throw new Error();
       const part = await decryptData(await fetchPackage("./" + name, 8 * 1024 * 1024), masterKey);
@@ -248,6 +296,7 @@ export async function createMediaURLs(snapshot, masterKey) {
 }
 
 export function revokeMediaURLs(urls) {
+  urls.close?.();
   for (const url of urls.values()) URL.revokeObjectURL(url);
   urls.clear();
 }

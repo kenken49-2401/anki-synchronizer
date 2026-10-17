@@ -7,7 +7,7 @@ from html.parser import HTMLParser
 from urllib.parse import unquote
 
 MAX_MEDIA_BYTES = 2 * 1024 * 1024
-MAX_TOTAL_BYTES = 128 * 1024 * 1024
+MAX_TOTAL_BYTES = 512 * 1024 * 1024
 MAX_MEDIA_FILES = 10_000
 
 

@@ -460,6 +460,8 @@ function login(message = "") {
     e.preventDefault();
     const button = e.target.querySelector("button");
     button.disabled = true;
+    const label = button.innerHTML;
+    button.textContent = "データと画像を復号しています…";
     try {
       const password = $("#password").value;
       $("#password").value = "";
@@ -476,6 +478,7 @@ function login(message = "") {
       $("#login-error").textContent = err.message;
     } finally {
       button.disabled = false;
+      button.innerHTML = label;
     }
   });
 }
@@ -642,11 +645,12 @@ function cardHTML(card, side) {
         continue;
       }
       const imageURL = state.mediaURLs.get(src.slice(-64));
-      if (!imageURL) {
+      if (!imageURL && !state.mediaURLs.loadImage) {
         node.replaceWith(document.createTextNode("［画像未取得］"));
         continue;
       }
-      node.setAttribute("src", imageURL);
+      if (imageURL) node.setAttribute("src", imageURL);
+      else node.dataset.mediaId = src.slice(-64);
       node.setAttribute("alt", alt || "カードの図");
       node.setAttribute("loading", "lazy");
     }
@@ -954,7 +958,33 @@ function updateCards() {
   bindCards();
   bindTags();
 }
+let mediaObserver;
+function bindMedia() {
+  mediaObserver?.disconnect();
+  const media = state.mediaURLs;
+  if (!media.loadImage) return;
+  const load = (image) => media.loadImage(image.dataset.mediaId).then(url => {
+    if (image.isConnected && state.mediaURLs === media) {
+      image.src = url;
+      delete image.dataset.mediaId;
+    }
+  }).catch(() => {
+    if (image.isConnected) image.alt = "画像を読み込めません。表示を更新してください。";
+  });
+  if (!globalThis.IntersectionObserver) {
+    document.querySelectorAll("img[data-media-id]").forEach(load);
+    return;
+  }
+  mediaObserver = new IntersectionObserver(entries => {
+    for (const entry of entries) if (entry.isIntersecting) {
+      mediaObserver.unobserve(entry.target);
+      load(entry.target);
+    }
+  }, {rootMargin: "300px"});
+  document.querySelectorAll("img[data-media-id]").forEach(image => mediaObserver.observe(image));
+}
 function bindCards() {
+  bindMedia();
   document.querySelectorAll("[data-note-tags]").forEach((form) =>
     form.addEventListener("submit", async (e) => {
       e.preventDefault();

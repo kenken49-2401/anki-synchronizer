@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import io
 import json
+import time
 import zipfile
 from urllib.parse import urljoin, urlsplit
 
@@ -17,7 +18,8 @@ import httpx
 from card_media import MAX_MEDIA_BYTES, MAX_TOTAL_BYTES, MAX_MEDIA_FILES, filename, raster, rich, validate_media
 from cloud_sync import CloudSyncError, _validate_endpoint
 
-MAX_ZIP = 8 * MAX_MEDIA_BYTES + 256 * 1024
+MAX_BATCH_FILES = 25  # Anki media protocol maximum.
+MAX_ZIP = MAX_BATCH_FILES * MAX_MEDIA_BYTES + 256 * 1024
 
 
 def _response(client, base, method, key, payload, *, local=False):
@@ -104,14 +106,18 @@ def download_media(snapshot, hkey, endpoint=None, *, _test_endpoint=None):
             ordered = sorted(names)
             media = {}
             total = 0
-            for offset in range(0, len(ordered), 8):
-                batch = ordered[offset:offset + 8]
+            last_progress = time.monotonic()
+            for offset in range(0, len(ordered), MAX_BATCH_FILES):
+                batch = ordered[offset:offset + MAX_BATCH_FILES]
                 zipped = _response(client, base, "downloadFiles", session, {"files": batch}, local=_test_endpoint is not None)
                 downloaded = _unzip(zipped, set(batch))
                 total += sum(len(base64.b64decode(item["data"])) for item in downloaded.values())
                 if total > MAX_TOTAL_BYTES:
                     raise CloudSyncError("Referenced images exceed the total image byte limit.")
                 media.update(downloaded)
+                if time.monotonic() - last_progress >= 20:
+                    print("Pages: image download is progressing.", flush=True)
+                    last_progress = time.monotonic()
             return validate_media(media)
     except CloudSyncError:
         raise

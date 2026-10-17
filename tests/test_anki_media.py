@@ -118,9 +118,9 @@ def test_more_than_500_small_images_are_allowed_without_revalidating_all_batches
 
 
 def test_image_total_byte_limit_remains_enforced_across_batches(monkeypatch):
-    names = [f'diagram-{i}.png' for i in range(9)]
+    names = [f'diagram-{i}.png' for i in range(anki_media.MAX_BATCH_FILES + 1)]
     snapshot = {'cards': [{'front': ''.join(f'<img src="{name}">' for name in names), 'back': ''}]}
-    monkeypatch.setattr(anki_media, 'MAX_TOTAL_BYTES', len(PNG) * 8)
+    monkeypatch.setattr(anki_media, 'MAX_TOTAL_BYTES', len(PNG) * anki_media.MAX_BATCH_FILES)
     def response(client, base, method, key, payload, **kwargs):
         if method == 'begin':
             return json.dumps({'data': {'sk': 'test-session'}, 'err': ''}).encode()
