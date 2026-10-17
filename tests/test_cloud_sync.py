@@ -100,3 +100,30 @@ def test_discovered_shard_is_validated(endpoint):
     with pytest.raises(cloud_sync.CloudSyncError):
         cloud_sync.resolve_download_endpoint(col, auth)
     assert auth.endpoint == cloud_sync.DEFAULT_ENDPOINT
+
+
+def test_export_omits_repeated_template_css_and_keeps_html_identity(tmp_path, monkeypatch):
+    from note_identity import note_fingerprint
+    import connector
+    col = Collection(str(tmp_path / 'styled.anki2'))
+    try:
+        model = col.models.by_name('Basic')
+        model['css'] = '/* repeated template style */' * 1000
+        col.models.save(model)
+        for i in range(8):
+            note = col.new_note(model)
+            note['Front'] = f'H<sub>2</sub>O {i}<img src="molecule.png">'
+            note['Back'] = '<b>Water</b>'
+            col.add_note(note, col.decks.id('Chemistry'))
+        monkeypatch.setattr(connector, 'MAX_SNAPSHOT_BYTES', 10000)
+        data = cloud_sync._extract_snapshot(col, timezone='Asia/Tokyo', query='', allow_empty=False)
+        assert len(data['cards']) == 8
+        for card in data['cards']:
+            assert model['css'] not in card['front'] + card['back']
+            assert '<sub>2</sub>' in card['front']
+            assert 'molecule.png' in card['front']
+            assert '<b>Water</b>' in card['back']
+            safe = validate_snapshot({**data, 'cards': [card], 'reviews': []})['cards'][0]
+            assert safe['tag_identity'] == note_fingerprint(card['model'], card['fields'])
+    finally:
+        col.close()

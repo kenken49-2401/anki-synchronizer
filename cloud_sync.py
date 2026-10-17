@@ -83,12 +83,13 @@ def _extract_snapshot(col: Collection, *, timezone: str, query: str, allow_empty
             deck = col.decks.get(card.odid or card.did)
             if model is None or deck is None:
                 raise CloudSyncError("Downloaded collection contains missing note types or decks.")
+            rendered = card.render_output()
             cards.append({
                 "id": _int(int(card.id), minimum=1),
                 "note_id": _int(int(note.id), minimum=1),
                 "deck": deck["name"], "model": model["name"],
                 "tags": sorted(set(note.tags)),
-                "front": card.question(), "back": card.answer(),
+                "front": rendered.question_text, "back": rendered.answer_text,
                 "fields": dict(note.items()),
                 "reps": _int(card.reps, minimum=0),
                 "lapses": _int(card.lapses, minimum=0),
