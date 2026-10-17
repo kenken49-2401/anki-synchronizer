@@ -316,10 +316,12 @@ def main(argv: list[str] | None = None) -> int:
     extra = args.arguments[1:] if args.arguments[:1] == ["--"] else args.arguments
     root = Path(__file__).resolve().parent.parent
     try:
-        project = ensure_current(root)
         if args.command == "open":
-            webbrowser.open(WEB_URL)
+            if not webbrowser.open(WEB_URL):
+                print(f"Could not open your browser. Open this address manually: {WEB_URL}")
+                return 1
             return 0
+        project = ensure_current(root)
         if args.command == "setup":
             return setup_local(root, project)
         if args.command == "import-tags":

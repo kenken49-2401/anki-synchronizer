@@ -266,5 +266,19 @@ class DesktopUpdateTests(unittest.TestCase):
         self.assertEqual((self.root / ".venv" / "keep").read_text(), "original")
 
 
+class BrowserLaunchTests(unittest.TestCase):
+    def test_open_does_not_install_runtime(self):
+        with patch.object(app, "ensure_current") as update, patch.object(app.webbrowser, "open", return_value=True) as browser:
+            self.assertEqual(app.main([]), 0)
+            update.assert_not_called()
+            browser.assert_called_once_with(app.WEB_URL)
+
+    def test_browser_failure_is_reported(self):
+        with patch.object(app, "ensure_current") as update, patch.object(app.webbrowser, "open", return_value=False), patch("builtins.print") as output:
+            self.assertEqual(app.main(["--command", "open"]), 1)
+            update.assert_not_called()
+            self.assertIn(app.WEB_URL, output.call_args.args[0])
+
+
 if __name__ == "__main__":
     unittest.main()
