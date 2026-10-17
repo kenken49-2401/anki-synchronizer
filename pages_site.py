@@ -173,10 +173,10 @@ def report_failure(stage: str, error: Exception) -> None:
                 if name == "SyncError":
                     labels.append("authentication rejected" if current.kind == anki_errors.SyncErrorKind.AUTH else "sync server rejected the operation")
                 if name in {"SyncError", "NetworkError"}:
-                    for hint in ("timeout", "timed out", "certificate", "dns", "redirect", "connection", "upgrade", "empty", "full sync", "too large"):
+                    for hint in ("timeout", "timed out", "certificate", "dns", "redirect", "connection", "upgrade", "empty", "full sync", "too large", "missing original size", "sync not started"):
                         if hint in str(current).lower():
                             labels.append(hint)
-                    for status in (401, 403, 404, 405, 408, 409, 429, 500, 502, 503, 504):
+                    for status in (301, 302, 303, 307, 308, 400, 401, 403, 404, 405, 406, 408, 409, 413, 422, 429, 500, 501, 502, 503, 504):
                         if re.search(r"(?<![0-9])" + str(status) + r"(?![0-9])", str(current)):
                             labels.append(f"HTTP {status}")
                 break
