@@ -14,6 +14,7 @@ import tempfile
 from urllib.parse import urlsplit
 
 import httpx
+from anki import errors as anki_errors
 
 from card_media import validate_media
 from cloud_sync import export_snapshot as export_ankiweb
@@ -166,6 +167,19 @@ def report_failure(stage: str, error: Exception) -> None:
         label = safe_messages.get(str(current))
         if label:
             labels.append(label)
+        for name in ("SyncError", "NetworkError", "DBError", "BackendIOError", "InvalidInput", "TemplateError", "NotFoundError", "Interrupted"):
+            if isinstance(current, getattr(anki_errors, name)):
+                labels.append(name)
+                if name == "SyncError":
+                    labels.append("authentication rejected" if current.kind == anki_errors.SyncErrorKind.AUTH else "sync server rejected the operation")
+                if name in {"SyncError", "NetworkError"}:
+                    for hint in ("timeout", "timed out", "certificate", "dns", "redirect", "connection", "upgrade", "empty", "full sync", "too large"):
+                        if hint in str(current).lower():
+                            labels.append(hint)
+                    for status in (401, 403, 404, 405, 408, 409, 429, 500, 502, 503, 504):
+                        if re.search(r"(?<![0-9])" + str(status) + r"(?![0-9])", str(current)):
+                            labels.append(f"HTTP {status}")
+                break
         for kind in (AttributeError, TypeError, ValueError, OSError, RuntimeError):
             if type(current) is kind:
                 labels.append(kind.__name__)

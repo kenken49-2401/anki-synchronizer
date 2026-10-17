@@ -267,3 +267,21 @@ def test_browser_encrypted_tags_are_importable_by_python(tmp_path, monkeypatch):
     outcome = tag_import.import_tag_changes(path, PASSWORD, 'Main', apply=True, sync=True)
     assert outcome['applied'] and outcome['synced']
     assert set(fake.notes[1]['tags']) == {'existing', '日本語::復習', 'new'}
+
+
+def test_safe_actions_diagnostic_never_contains_exception_content(monkeypatch, capsys):
+    monkeypatch.setenv('GITHUB_ACTIONS', 'true')
+    try:
+        try:
+            raise AttributeError('PRIVATE_CARD ::error:: secret-token-123')
+        except AttributeError:
+            raise RuntimeError('https://example.test/?hkey=secret-token-123') from None
+    except RuntimeError as exc:
+        pages_site.report_failure('downloading and reading AnkiWeb collection', exc)
+    result = capsys.readouterr()
+    text = result.out + result.err
+    assert '::error title=Anki Pages diagnostic::' in text
+    assert 'AttributeError' in text
+    assert 'PRIVATE_CARD' not in text
+    assert 'secret-token-123' not in text
+    assert 'https://' not in text
