@@ -50,7 +50,7 @@ def test_site_contains_only_public_assets_and_ciphertext(tmp_path):
     site = tmp_path / "site"
     seed = tmp_path / "pages-data" / pages_site.PACKAGE_NAME
     pages_site.build_site(data, PASSWORD, site, seed_output=seed)
-    assert {p.name for p in site.iterdir()} == pages_site.ASSETS | {".nojekyll", pages_site.PACKAGE_NAME}
+    assert {p.name for p in site.iterdir()} == pages_site.ASSETS | {".nojekyll", pages_site.PACKAGE_NAME, pages_site.BUILD_FILE}
     for path in site.iterdir():
         contents = path.read_bytes()
         assert b"PRIVATE_CARD_f128ce" not in contents
@@ -61,6 +61,29 @@ def test_site_contains_only_public_assets_and_ciphertext(tmp_path):
     before = seed.read_bytes()
     pages_site.build_site(data, PASSWORD, site)
     assert (site / pages_site.PACKAGE_NAME).read_bytes() != before
+
+
+def test_build_version_covers_code_not_private_data_and_busts_module_caches(tmp_path, monkeypatch):
+    data = pages_site.prepare_snapshot(with_image())
+    site = tmp_path / "site"
+    pages_site.build_site(data, PASSWORD, site)
+    one = json.loads((site / pages_site.BUILD_FILE).read_text())["version"]
+    assert len(one) == 64
+    assert f'content="{one}"' in (site / 'index.html').read_text()
+    assert f'./app.js?v={one}' in (site / 'index.html').read_text()
+    assert f'./vault.mjs?v={one}' in (site / 'app.js').read_text()
+    data['cards'][0]['tags'].append('private-tag-not-public')
+    pages_site.build_site(data, PASSWORD, site)
+    assert json.loads((site / pages_site.BUILD_FILE).read_text())["version"] == one
+    source = tmp_path / 'source'
+    shutil.copytree(pages_site.ROOT / 'web', source / 'web')
+    (source / 'web' / 'app.js').write_text((source / 'web' / 'app.js').read_text() + '\n// new code\n')
+    monkeypatch.setattr(pages_site, 'ROOT', source)
+    pages_site.build_site(data, PASSWORD, site)
+    assert json.loads((site / pages_site.BUILD_FILE).read_text())["version"] != one
+    manifest = json.loads((site / 'manifest.webmanifest').read_text())
+    assert manifest['start_url'] == './' and manifest['display'] == 'standalone'
+    assert (site / 'icon-180.png').read_bytes().startswith(b'\x89PNG\r\n\x1a\n')
 
 
 def test_seed_rebuild_and_image_retention(tmp_path):

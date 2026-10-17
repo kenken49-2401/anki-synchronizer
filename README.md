@@ -5,6 +5,7 @@ AnkiWebからカード・タグ・復習履歴・図を読み取り、GitHub Act
 青いカード一覧、図と化学式、答えの開閉、検索、タグ、デッキ／親フォルダ別の表示、期間別・デッキ別の学習時間や正解率に対応します。PC停止中もAnkiWebへ同期済みの内容を定期更新できます。通常の公開は読み取り専用です。タグ書き戻しを有効にすると、アプリから暗号化した変更をGitHubで送信し、毎時のActionsがAnkiWebへ反映します。スマホのAnkiで同期すればタグを受け取れ、PCは不要です。PCでのファイル取り込みも使えます。
 
 - 初回設定と使い方：[DASHBOARD.md](DASHBOARD.md)
+- 自動更新・iPhoneのホーム画面・PCランチャー：[UPDATES.md](UPDATES.md)
 - Pages公開・Secrets・自動更新：[ACTIONS_SETUP.md](ACTIONS_SETUP.md)
 - 検証結果：[DASHBOARD_VERIFICATION.md](DASHBOARD_VERIFICATION.md)
 

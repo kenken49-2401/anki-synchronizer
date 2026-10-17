@@ -16,7 +16,23 @@ name: Publish encrypted Anki Pages
         default: false
   push:
     branches: [main]
-    paths: ["pages-data/snapshot.enc.json"]
+    paths:
+      - "pages-data/snapshot.enc.json"
+      - "web/**"
+      - "pages_site.py"
+      - "pages_crypto.py"
+      - "dashboard.py"
+      - "card_media.py"
+      - "note_identity.py"
+      - "cloud_sync.py"
+      - "anki_media.py"
+      - "cloud_tags.py"
+      - "github_tag_queue.py"
+      - "tag_import.py"
+      - "connector.py"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/ankiweb-refresh.yml"
 
 permissions:
   contents: read

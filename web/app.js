@@ -14,6 +14,7 @@ import {
   validateChanges,
   withTagChanges,
 } from "./tags.mjs";
+import { watchUpdates } from "./updates.mjs";
 import { tagRequest, unconfirmedTags, TAG_REPOSITORY } from "./tag-queue.mjs";
 import {
   summarize,
@@ -1077,6 +1078,30 @@ window.addEventListener("hashchange", () => {
 });
 if (state.demo) await refresh();
 else login();
+
+const appBuild =
+  document.querySelector('meta[name="anki-atlas-build"]')?.content || "";
+watchUpdates({
+  current: appBuild,
+  safe: () =>
+    !state.busy &&
+    !state.tagBusy &&
+    !(state.tagStorageError && state.tagChanges.size) &&
+    !document.querySelector("dialog[open]") &&
+    !$("#password")?.value &&
+    !$("#login-form button")?.disabled &&
+    ![...document.querySelectorAll(".tag-input-row input")].some((input) =>
+      input.value.trim(),
+    ),
+  waiting: () =>
+    toast("新しいアプリがあります。入力内容を保存すると自動で更新します。"),
+  reload: (version) => {
+    const url = new URL(location.href);
+    url.searchParams.set("atlas-build", version);
+    location.replace(url);
+  },
+  storage: sessionStorage,
+});
 
 window.addEventListener("pagehide", () => {
   state.masterKey = null;

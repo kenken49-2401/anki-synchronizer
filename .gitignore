@@ -21,3 +21,4 @@ test-results/
 anki-tag-changes*.enc.json
 .private/
 site/
+.atlas-runtime/

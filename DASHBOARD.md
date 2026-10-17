@@ -18,20 +18,30 @@ PC / スマホのAnki → AnkiWebへの通常同期
                  自分のブラウザー内で復号・表示
 ```
 
+ブラウザー版とiPhoneのホーム画面版は、GitHubから公開された新しい版を自動で確認します。PCのZIP版には起動時に最新版を取り込むランチャーを追加しました。[自動更新・iPhoneへの追加・以前のZIPからの移行](UPDATES.md) を参照してください。
+
 ## 1. 自分のPCにコードとツールを用意する
 
 この作業はCodexの画面内ではなく、**自分のPCのターミナル**で行います。[Python 3.12](https://www.python.org/downloads/) と [uv](https://docs.astral.sh/uv/getting-started/installation/) をインストールしてください。
 
-まだリポジトリを持っていない場合：
+WindowsでZIPを使う場合は、GitHubの **Code → Download ZIP** から取得・展開します。フォルダ内で次を実行すると、自動更新後のコードで初回設定できます。既存の秘密ファイルは上書きせず、不足している準備だけを行います。
+
+```powershell
+.\Anki-Atlas.cmd --command setup
+```
+
+Gitを使って取得する場合：
 
 ```sh
 git clone --branch main https://github.com/kenken49-2401/anki-synchronizer.git
 cd anki-synchronizer
 ```
 
-既にある場合は、そのフォルダを開き、作業中の変更を保管してから最新の `main` を取り込んでください。
+既にある場合は、[ランチャーの導入手順](UPDATES.md#pcのzip版にランチャーを導入する)を使うか、作業中の変更を保管してから最新の `main` を取り込んでください。
 
 ## 2. 依存関係と閲覧パスワードを準備する
+
+ランチャーの `--command setup` が完了していれば、以下のコマンドの再実行は不要です。`.pages.env` と `secrets.env` をGitHub Secretsの登録に使います。
 
 リポジトリのフォルダで、次の2行を実行します。
 

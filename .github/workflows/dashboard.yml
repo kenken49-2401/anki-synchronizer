@@ -32,5 +32,24 @@ jobs:
           node --check web/vault.mjs
           node --check web/tags.mjs
           node --check web/tag-queue.mjs
+          node --check web/updates.mjs
       - name: Verify learning statistics
         run: node --test tests/*.test.mjs
+
+  desktop-windows:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: 3.12.14
+          enable-cache: false
+      - name: Check the Windows launcher
+        shell: pwsh
+        run: |
+          & .\Anki-Atlas.cmd --help
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify isolated updates on Windows
+        shell: pwsh
+        run: uv run --no-project --python 3.12 python -m unittest discover -s tests -p test_desktop_update.py

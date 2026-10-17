@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Iterable
 from html import escape
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -22,7 +23,9 @@ from pages_crypto import MAX_PACKAGE_BYTES, PackageError, decrypt, encrypt, pass
 
 ROOT = Path(__file__).resolve().parent
 PACKAGE_NAME = "snapshot.enc.json"
-ASSETS = {"index.html", "app.js", "styles.css", "stats.mjs", "vault.mjs", "tags.mjs", "tag-queue.mjs"}
+ASSETS = {"index.html", "app.js", "styles.css", "stats.mjs", "vault.mjs", "tags.mjs", "tag-queue.mjs", "updates.mjs",
+          "manifest.webmanifest", "icon-180.png", "icon-192.png", "icon-512.png"}
+BUILD_FILE = "release.json"
 
 
 def load_package(path: Path, password: str) -> dict:
@@ -113,12 +116,23 @@ def build_site(snapshot: dict, password: str, output: Path, *, seed_output: Path
         raise PackageError("Encrypted package exceeds the size limit.")
     # Never delete or publish an unknown directory that may contain private files.
     if output.is_symlink() or (output.exists() and (
-            not output.is_dir() or any(p.name not in ASSETS | {PACKAGE_NAME, ".nojekyll"}
+            not output.is_dir() or any(p.name not in ASSETS | {PACKAGE_NAME, ".nojekyll", BUILD_FILE}
                                       or p.is_symlink() or not p.is_file() for p in output.iterdir()))):
         raise PackageError("Output must be a dedicated site directory with no unknown files or symlinks.")
     output.mkdir(parents=True, exist_ok=True)
-    for name in sorted(ASSETS):
-        _atomic_write(output / name, (ROOT / "web" / name).read_bytes())
+    assets = {name: (ROOT / "web" / name).read_bytes() for name in sorted(ASSETS)}
+    digest = hashlib.sha256()
+    for name, content in assets.items():
+        digest.update(name.encode() + b"\0" + str(len(content)).encode() + b"\0" + content)
+    version = digest.hexdigest()
+    for name, content in assets.items():
+        if name.endswith((".html", ".js", ".mjs", ".css")):
+            text = content.decode("utf-8").replace("__ATLAS_BUILD__", version)
+            text = re.sub(r'(["\'])\./([A-Za-z0-9_.-]+\.(?:mjs|js|css))\1',
+                          lambda m: m[1] + './' + m[2] + '?v=' + version + m[1], text)
+            content = text.encode("utf-8")
+        _atomic_write(output / name, content)
+    _atomic_write(output / BUILD_FILE, json.dumps({"schema_version": 1, "version": version}, separators=(",", ":")).encode())
     _atomic_write(output / ".nojekyll", b"")
     _atomic_write(output / PACKAGE_NAME, package)
     if seed_output is not None:
