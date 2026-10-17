@@ -39,7 +39,7 @@
 
 ## 外部設定後に確認するもの
 
-リポジトリの公開・Issues・Pagesの配信元（GitHub Actions）は設定済みと確認しました。実アカウントのAnkiWeb取得は確認済みです。実データの暗号化・画像分割・Pages配信は、[手動実行39044589695](https://github.com/kenken49-2401/anki-synchronizer/actions/runs/39044589695)で成功しました（ビルド8分29秒、配信15秒）。定期実行は未検証です。Secrets・Variablesの確認APIは403のため、GitHub画面での登録確認、アプリでの利用者による復号確認と、`ANKI_AUTO_SYNC_ENABLED=true` の設定が必要です。
+リポジトリの公開・Issues・Pagesの配信元（GitHub Actions）は設定済みと確認しました。実アカウントのAnkiWeb取得は確認済みです。複数デッキ選択・端末自動ログイン・新しい統計を含む実データの暗号化・画像分割・Pages配信は、[手動実行39048171739](https://github.com/kenken49-2401/anki-synchronizer/actions/runs/39048171739)で成功しました（ビルド9分6秒、配信13秒）。定期実行は現在スキップされています。Secrets・Variablesの確認APIは403のため、GitHub画面での登録確認、アプリでの利用者による復号確認と、`ANKI_AUTO_SYNC_ENABLED=true` の設定が必要です。
 
 実AnkiWeb・実GitHub Issueを使ったタグ取り込みの往復は未検証です。初期設定後は本人のスマホ送信を毎時のActionsで処理でき、PCやAnkiConnectの起動は不要です。スマホAnki側では送信前と反映後に同期を行います。コードのmain反映とGitHub上の自動テストは完了しています。
 
