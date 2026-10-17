@@ -52,4 +52,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Verify isolated updates on Windows
         shell: pwsh
-        run: uv run --no-project --python 3.12 python -m unittest discover -s tests -p test_desktop_update.py
+        run: |
+          $testScript = @'
+          import sys, unittest
+          suite = unittest.defaultTestLoader.discover('tests', pattern='test_desktop_update.py')
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          for test, detail in result.failures + result.errors:
+              message = (test.id() + '\n' + detail)[-5000:]
+              message = message.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+              print('::error file=tests/test_desktop_update.py::' + message)
+          sys.exit(not result.wasSuccessful())
+          '@
+          uv run --no-project --python 3.12 python -c $testScript

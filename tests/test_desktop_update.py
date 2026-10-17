@@ -152,7 +152,7 @@ class DesktopUpdateTests(unittest.TestCase):
         self.create_symlink(site / "leak.env", secret)
         handler = object.__new__(app.SiteHandler)
         handler.directory = str(site)
-        self.assertEqual(handler.translate_path("/leak.env"), str(site / ".not-found"))
+        self.assertEqual(Path(handler.translate_path("/leak.env")).resolve(), (site / ".not-found").resolve())
         self.assertEqual(handler.translate_path("/index.html"), str(site / "index.html"))
 
     def test_local_command_keeps_stable_browser_origin(self):
