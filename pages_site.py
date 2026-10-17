@@ -119,8 +119,18 @@ def build_site(snapshot: dict, password: str, output: Path, *, seed_output: Path
             not output.is_dir() or any(p.name not in ASSETS | {PACKAGE_NAME, ".nojekyll", BUILD_FILE}
                                       or p.is_symlink() or not p.is_file() for p in output.iterdir()))):
         raise PackageError("Output must be a dedicated site directory with no unknown files or symlinks.")
+    write_public_assets(output)
+    _atomic_write(output / PACKAGE_NAME, package)
+    if seed_output is not None:
+        _atomic_write(seed_output, package)
+
+
+def write_public_assets(output: Path, *, setup_pending: bool = False) -> None:
+    """Write only the allowlisted public interface, without accessing Anki or secrets."""
     output.mkdir(parents=True, exist_ok=True)
     assets = {name: (ROOT / "web" / name).read_bytes() for name in sorted(ASSETS)}
+    if setup_pending:
+        assets["index.html"] = assets["index.html"].replace(b"<head>", b'<head><meta name="anki-atlas-setup" content="pending">')
     digest = hashlib.sha256()
     for name, content in assets.items():
         digest.update(name.encode() + b"\0" + str(len(content)).encode() + b"\0" + content)
@@ -134,9 +144,6 @@ def build_site(snapshot: dict, password: str, output: Path, *, seed_output: Path
         _atomic_write(output / name, content)
     _atomic_write(output / BUILD_FILE, json.dumps({"schema_version": 1, "version": version}, separators=(",", ":")).encode())
     _atomic_write(output / ".nojekyll", b"")
-    _atomic_write(output / PACKAGE_NAME, package)
-    if seed_output is not None:
-        _atomic_write(seed_output, package)
 
 
 def main(argv: list[str] | None = None) -> int:

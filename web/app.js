@@ -452,6 +452,10 @@ function syncLabel() {
 function login(message = "") {
   $("#app").innerHTML =
     `<div class="login-layout"><section class="login-story"><a class="brand" href="./"><span class="brand-mark">A</span>Anki <strong>Atlas</strong></a><div><span class="eyebrow">YOUR LEARNING, CONNECTED</span><h1>学びを、<br>ひとつの景色に。</h1><p>散らばったカードをタグで整理。<br>積み重ねた学習を、見えるかたちに。</p><div class="story-cards"><div>${icon("tag", 24)}<b>タグでつながる知識</b><span>カードを横断して、まとめて読む。</span></div><div>${icon("chart", 24)}<b>毎日の、小さな前進</b><span>正解率と学習時間を振り返る。</span></div></div></div><small>Made for your Anki collection.</small></section><main class="login-main"><div class="login-box"><span class="eyebrow">WELCOME BACK</span><h2>あなたの学習スペースへ</h2><p class="muted">閲覧パスワードで、このブラウザー内だけで復号</p><form id="login-form"><label for="password">パスワード</label><input id="password" name="password" type="password" autocomplete="current-password" required placeholder="ダッシュボードのパスワード"><p id="login-error" class="error" role="alert">${esc(message)}</p><button class="button primary wide" type="submit">ログイン ${icon("arrow", 17)}</button></form><div class="login-divider"><span>まずは雰囲気を見たい方へ</span></div><a class="button subtle wide" href="?demo=1">デモを見てみる ${icon("arrow", 17)}</a><p class="login-note">パスワードはサーバーへ送信・保存しません。<br>AnkiWebのパスワードは入力しないでください。</p></div></main></div>`;
+  if (document.querySelector('meta[name="anki-atlas-setup"]')?.content === "pending") {
+    $("#login-form").hidden = true;
+    $("#login-form").insertAdjacentHTML("beforebegin", '<p role="status">アプリの公開は完了しました。自分のカードを表示するにはAnkiの接続設定が必要です。</p><p><a href="https://github.com/kenken49-2401/anki-synchronizer/blob/main/ACTIONS_SETUP.md">Ankiの接続手順を見る →</a></p>');
+  }
   $("#login-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const button = e.target.querySelector("button");
