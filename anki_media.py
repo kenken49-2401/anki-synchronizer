@@ -14,7 +14,7 @@ from urllib.parse import urljoin, urlsplit
 
 import httpx
 
-from card_media import MAX_MEDIA_BYTES, MAX_TOTAL_BYTES, filename, raster, rich, validate_media
+from card_media import MAX_MEDIA_BYTES, MAX_TOTAL_BYTES, MAX_MEDIA_FILES, filename, raster, rich, validate_media
 from cloud_sync import CloudSyncError, _validate_endpoint
 
 MAX_ZIP = MAX_TOTAL_BYTES + 256 * 1024
@@ -90,8 +90,8 @@ def download_media(snapshot, hkey, endpoint=None, *, _test_endpoint=None):
         for side in ("front", "back"):
             _, refs = rich(card[side], answer_only=side == "back")
             names.update(refs)
-    if len(names) > 500:
-        raise CloudSyncError("More than 500 referenced images; narrow the collection query.")
+    if len(names) > MAX_MEDIA_FILES:
+        raise CloudSyncError("Referenced image count exceeds the supported limit; narrow the collection query.")
     if not names:
         return {}
     try:
@@ -103,12 +103,16 @@ def download_media(snapshot, hkey, endpoint=None, *, _test_endpoint=None):
                 raise ValueError
             ordered = sorted(names)
             media = {}
+            total = 0
             for offset in range(0, len(ordered), 8):
                 batch = ordered[offset:offset + 8]
                 zipped = _response(client, base, "downloadFiles", session, {"files": batch}, local=_test_endpoint is not None)
-                media.update(_unzip(zipped, set(batch)))
-                validate_media(media)
-            return media
+                downloaded = _unzip(zipped, set(batch))
+                total += sum(len(base64.b64decode(item["data"])) for item in downloaded.values())
+                if total > MAX_TOTAL_BYTES:
+                    raise CloudSyncError("Referenced images exceed the total image byte limit.")
+                media.update(downloaded)
+            return validate_media(media)
     except CloudSyncError:
         raise
     except Exception:

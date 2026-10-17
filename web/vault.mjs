@@ -193,7 +193,7 @@ export async function createMediaURLs(snapshot) {
   let total = 0;
   try {
     const media = Object.values(snapshot.media || {});
-    if (media.length > 500) throw new Error();
+    if (media.length > 10000) throw new Error();
     for (const item of media) {
       if (
         !item ||

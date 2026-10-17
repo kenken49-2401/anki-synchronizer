@@ -155,7 +155,8 @@ def report_failure(stage: str, error: Exception) -> None:
         "AnkiWeb endpoint must be an HTTPS ankiweb.net subdomain URL.": "ANKIWEB_ENDPOINT is invalid; copy only its value from secrets.env.",
         "PAGES_PASSWORD must contain 16 to 1024 UTF-8 bytes; use a long random password.": "PAGES_PASSWORD is missing or outside the supported length.",
         "Create an encrypted seed using the local AnkiConnect importer first.": "No encrypted seed exists. Select source=ankiweb for an AnkiWeb import.",
-        "More than 500 referenced images; narrow the collection query.": "Referenced image count exceeds the supported limit.",
+        "Referenced image count exceeds the supported limit; narrow the collection query.": "Referenced image count exceeds the supported limit.",
+        "Referenced images exceed the total image byte limit.": "Referenced images exceed the total supported image size.",
         "Cannot decrypt the package; check the password and file integrity.": "The previous data cannot be decrypted with PAGES_PASSWORD.",
         "Previous Pages data could not be read; existing deployment was preserved.": "Could not retrieve previous encrypted data; deployment was preserved.",
     }

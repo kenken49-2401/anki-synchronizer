@@ -102,3 +102,29 @@ def test_official_server_media_download_never_calls_upload(tmp_path, monkeypatch
             col.close()
         server.terminate()
         server.wait(timeout=5)
+
+
+def test_more_than_500_small_images_are_allowed_without_revalidating_all_batches(monkeypatch):
+    names = [f'diagram-{i}.png' for i in range(501)]
+    snapshot = {'cards': [{'front': ''.join(f'<img src="{name}">' for name in names), 'back': ''}]}
+    def response(client, base, method, key, payload, **kwargs):
+        if method == 'begin':
+            return json.dumps({'data': {'sk': 'test-session'}, 'err': ''}).encode()
+        batch = payload['files']
+        return archive({str(i): PNG for i in range(len(batch))}, {str(i): name for i, name in enumerate(batch)})
+    with patch.object(anki_media, '_response', side_effect=response):
+        result = anki_media.download_media(snapshot, 'test-token')
+    assert set(result) == set(names)
+
+
+def test_image_total_byte_limit_remains_enforced_across_batches(monkeypatch):
+    names = [f'diagram-{i}.png' for i in range(9)]
+    snapshot = {'cards': [{'front': ''.join(f'<img src="{name}">' for name in names), 'back': ''}]}
+    monkeypatch.setattr(anki_media, 'MAX_TOTAL_BYTES', len(PNG) * 8)
+    def response(client, base, method, key, payload, **kwargs):
+        if method == 'begin':
+            return json.dumps({'data': {'sk': 'test-session'}, 'err': ''}).encode()
+        batch = payload['files']
+        return archive({str(i): PNG for i in range(len(batch))}, {str(i): name for i, name in enumerate(batch)})
+    with patch.object(anki_media, '_response', side_effect=response), pytest.raises(CloudSyncError, match='total image byte limit'):
+        anki_media.download_media(snapshot, 'test-token')

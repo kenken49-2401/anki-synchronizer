@@ -8,6 +8,7 @@ from urllib.parse import unquote
 
 MAX_MEDIA_BYTES = 2 * 1024 * 1024
 MAX_TOTAL_BYTES = 16 * 1024 * 1024
+MAX_MEDIA_FILES = 10_000
 
 
 def filename(value):
@@ -28,8 +29,8 @@ def raster(data):
 
 
 def validate_media(raw):
-    if not isinstance(raw, dict) or len(raw) > 500:
-        raise ValueError('media must contain at most 500 raster images')
+    if not isinstance(raw, dict) or len(raw) > MAX_MEDIA_FILES:
+        raise ValueError('media image count exceeds the supported limit')
     result = {}
     total = 0
     for name, item in raw.items():
