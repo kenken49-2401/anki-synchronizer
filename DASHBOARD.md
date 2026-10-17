@@ -84,10 +84,12 @@ uv run --frozen --env-file .pages.env python pages_site.py --source ankiconnect 
 | 場所 | 中身・扱い |
 | --- | --- |
 | `site/` | 配信用の画面と `snapshot.enc.json`。平文データやパスワードは含みません。Gitでは無視されます |
-| `pages-data/snapshot.enc.json` | GitHubへ渡すための暗号化済みシード。これだけを明示的に追加します |
+| `pages-data/snapshot.enc.json` | GitHubへ渡すための暗号化済みシード。画像が多い場合は同じフォルダの `media-*.enc.json` も明示的に追加します |
 
 ```sh
 git add pages-data/snapshot.enc.json
+# media-*.enc.json が作成された場合のみ、画像パッケージも追加
+git add pages-data/media-*.enc.json
 git commit -m "Update encrypted Anki seed"
 git push
 ```
@@ -173,7 +175,7 @@ PBKDF2-SHA256（600,000回・ランダムsalt）から256ビット鍵を作り�
 
 画像はPNG/JPEG/GIF/WebP、下付き・上付き文字や基本的な表に対応します。カードのスクリプト・外部画像URL・SVG・音声・MathJaxの実行はしません。未取得／未対応の画像は「画像未取得」と表示します。AnkiWebの画像取得は `begin` と `downloadFiles` の読み取りAPIのみです。
 
-パッケージの平文は32 MiB、カード50,000枚、履歴1,000,000件、画像500個・各2 MiB・合計16 MiBまでです。超過や取得失敗時は公開を行わず、最後の成功したサイトを維持します。
+カード・統計パッケージの平文は32 MiB、カード50,000枚、履歴1,000,000件、画像10,000個・各2 MiB・合計128 MiBまでです。超過や取得失敗時は公開を行わず、最後の成功したサイトを維持します。
 
 正解率はAgainを不正解、Hard/Good/Easyを正解とした自己評価の割合です。学習時間はAnkiの回答時間の合計で、休憩・閲覧時間は含みません。日付の区切りは画面で選んだタイムゾーンです。
 
@@ -186,3 +188,5 @@ node --test tests/*.test.mjs
 ```
 
 [検証結果](DASHBOARD_VERIFICATION.md)。旧MCPやサーバー方式のソースは互換用に残っていますが、新しいPages構成では `server:app`、`dashboard:app`、`render-dashboard.yaml`、`Dockerfile.dashboard` を使いません。
+
+画像が多い場合は、画像を約4 MiBずつの別パッケージに暗号化します。画像のファイル名や対応関係も暗号文の中にあり、ブラウザー内で順に復号します。シードをコピーする場合は、`snapshot.enc.json` と同じフォルダの `media-*.enc.json` を一緒にコピーしてください。少量の画像は従来の単一パッケージでも利用できます。

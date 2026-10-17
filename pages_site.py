@@ -16,7 +16,7 @@ from urllib.parse import urlsplit
 import httpx
 from anki import errors as anki_errors
 
-from card_media import validate_media
+from card_media import MAX_TOTAL_BYTES, validate_media
 from cloud_sync import export_snapshot as export_ankiweb
 from connector import ConnectorError, export_snapshot as export_local
 from dashboard import SnapshotValidationError, validate_snapshot
@@ -27,6 +27,9 @@ PACKAGE_NAME = "snapshot.enc.json"
 ASSETS = {"index.html", "app.js", "styles.css", "stats.mjs", "vault.mjs", "tags.mjs", "tag-queue.mjs", "updates.mjs",
           "manifest.webmanifest", "icon-180.png", "icon-192.png", "icon-512.png"}
 BUILD_FILE = "release.json"
+MEDIA_FILE = re.compile(r"media-[a-f0-9]{64}\.enc\.json")
+MEDIA_CHUNK_BYTES = 4 * 1024 * 1024
+MAX_MEDIA_PACKAGES = 128
 
 
 def load_package(path: Path, password: str) -> dict:
@@ -36,10 +39,16 @@ def load_package(path: Path, password: str) -> dict:
         value = json.loads(path.read_bytes())
     except (ValueError, UnicodeError):
         raise PackageError("Invalid encrypted input file.") from None
-    return decrypt(value, password)
+    snapshot = decrypt(value, password)
+    def read_chunk(name):
+        chunk = path.parent / name
+        if chunk.is_symlink() or chunk.stat().st_size > MAX_PACKAGE_BYTES:
+            raise PackageError("Invalid encrypted image chunk.")
+        return json.loads(chunk.read_bytes())
+    return hydrate_media(snapshot, password, read_chunk)
 
 
-def fetch_previous(url: str, password: str) -> dict | None:
+def fetch_previous(url: str, password: str, *, include_media: bool = True) -> dict | None:
     """Fetch public ciphertext without transmitting a password or token."""
     parsed = urlsplit(url)
     if (parsed.scheme != "https" or not parsed.hostname or parsed.username is not None
@@ -48,20 +57,78 @@ def fetch_previous(url: str, password: str) -> dict | None:
     destination = url.rstrip("/") + "/" + PACKAGE_NAME
     try:
         with httpx.Client(timeout=60, follow_redirects=False) as client:
-            with client.stream("GET", destination) as response:
-                if response.status_code == 404:
-                    return None  # First deployment only.
-                response.raise_for_status()
-                chunks = bytearray()
-                for chunk in response.iter_bytes():
-                    if len(chunks) + len(chunk) > MAX_PACKAGE_BYTES:
-                        raise PackageError("Previous encrypted package exceeds the size limit.")
-                    chunks.extend(chunk)
-        return decrypt(json.loads(chunks), password)
+            def read_url(destination, allow_missing=False):
+                with client.stream("GET", destination) as response:
+                    if allow_missing and response.status_code == 404:
+                        return None
+                    response.raise_for_status()
+                    chunks = bytearray()
+                    for chunk in response.iter_bytes():
+                        if len(chunks) + len(chunk) > MAX_PACKAGE_BYTES:
+                            raise PackageError("Previous encrypted package exceeds the size limit.")
+                        chunks.extend(chunk)
+                return json.loads(chunks)
+            package = read_url(destination, allow_missing=True)
+            if package is None:
+                return None
+            snapshot = decrypt(package, password)
+            if include_media:
+                return hydrate_media(snapshot, password, lambda name: read_url(url.rstrip("/") + "/" + name))
+            return snapshot
     except PackageError:
         raise
     except Exception:
         raise PackageError("Previous Pages data could not be read; existing deployment was preserved.") from None
+
+
+
+def hydrate_media(snapshot: dict, password: str, read_chunk) -> dict:
+    packages = snapshot.get("media_packages", [])
+    if not isinstance(packages, list) or len(packages) > MAX_MEDIA_PACKAGES or any(not isinstance(name, str) for name in packages) or len(set(packages)) != len(packages):
+        raise PackageError("Invalid encrypted image manifest.")
+    media = dict(snapshot.get("media", {}))
+    total = sum((len(item["data"]) * 3 // 4 - item["data"].count("=")) for item in media.values())
+    for name in packages:
+        if not isinstance(name, str) or not MEDIA_FILE.fullmatch(name):
+            raise PackageError("Invalid encrypted image manifest.")
+        part = decrypt(read_chunk(name), password)
+        if part.get("schema_version") != 1 or not isinstance(part.get("media"), dict):
+            raise PackageError("Invalid encrypted image chunk.")
+        additions = validate_media(part["media"])
+        if media.keys() & additions.keys():
+            raise PackageError("Duplicate encrypted images.")
+        total += sum((len(item["data"]) * 3 // 4 - item["data"].count("=")) for item in additions.values())
+        if total > MAX_TOTAL_BYTES:
+            raise PackageError("Encrypted images exceed the total size limit.")
+        media.update(additions)
+    if packages:
+        snapshot = {**snapshot, "media": validate_media(media)}
+        snapshot.pop("media_packages", None)
+    return snapshot
+
+
+def split_media(snapshot: dict, password: str) -> tuple[dict, dict[str, bytes]]:
+    media = snapshot.get("media", {})
+    if sum(len(item["data"]) + len(name) + 512 for name, item in media.items()) <= MEDIA_CHUNK_BYTES:
+        return snapshot, {}
+    chunks = {}
+    batch = {}
+    size = 0
+    def finish():
+        encoded = json.dumps(encrypt({"schema_version": 1, "media": batch}, password), separators=(",", ":")).encode()
+        chunks["media-" + hashlib.sha256(encoded).hexdigest() + ".enc.json"] = encoded
+    for name, item in sorted(media.items()):
+        cost = len(item["data"]) + len(name) + 512
+        if batch and size + cost > MEDIA_CHUNK_BYTES:
+            finish()
+            batch, size = {}, 0
+        batch[name] = item
+        size += cost
+    if batch:
+        finish()
+    if len(chunks) > MAX_MEDIA_PACKAGES:
+        raise PackageError("Too many encrypted image chunks.")
+    return {**snapshot, "media": {}, "media_packages": list(chunks)}, chunks
 
 
 def restore_source(snapshot: dict) -> dict:
@@ -112,17 +179,25 @@ def _atomic_write(path: Path, contents: bytes) -> None:
 def build_site(snapshot: dict, password: str, output: Path, *, seed_output: Path | None = None) -> None:
     if seed_output is not None and (seed_output.name != PACKAGE_NAME or seed_output.is_symlink()):
         raise PackageError("Seed output must be a regular snapshot.enc.json file.")
-    package = json.dumps(encrypt(snapshot, password), separators=(",", ":")).encode()
+    compact, chunks = split_media(snapshot, password)
+    package = json.dumps(encrypt(compact, password), separators=(",", ":")).encode()
     if len(package) > MAX_PACKAGE_BYTES:
         raise PackageError("Encrypted package exceeds the size limit.")
     # Never delete or publish an unknown directory that may contain private files.
     if output.is_symlink() or (output.exists() and (
-            not output.is_dir() or any(p.name not in ASSETS | {PACKAGE_NAME, ".nojekyll", BUILD_FILE}
+            not output.is_dir() or any((p.name not in ASSETS | {PACKAGE_NAME, ".nojekyll", BUILD_FILE} and not MEDIA_FILE.fullmatch(p.name))
                                       or p.is_symlink() or not p.is_file() for p in output.iterdir()))):
         raise PackageError("Output must be a dedicated site directory with no unknown files or symlinks.")
     write_public_assets(output)
+    for name, content in chunks.items():
+        _atomic_write(output / name, content)
     _atomic_write(output / PACKAGE_NAME, package)
+    for old in output.iterdir():
+        if MEDIA_FILE.fullmatch(old.name) and old.name not in chunks:
+            old.unlink()
     if seed_output is not None:
+        for name, content in chunks.items():
+            _atomic_write(seed_output.parent / name, content)
         _atomic_write(seed_output, package)
 
 
@@ -177,10 +252,11 @@ def report_failure(stage: str, error: Exception) -> None:
                     for hint in ("timeout", "timed out", "certificate", "dns", "redirect", "connection", "upgrade", "empty", "full sync", "too large", "missing original size", "sync not started"):
                         if hint in str(current).lower():
                             labels.append(hint)
-                    for status in (301, 302, 303, 307, 308, 400, 401, 403, 404, 405, 406, 408, 409, 413, 422, 429, 500, 501, 502, 503, 504):
-                        if re.search(r"(?<![0-9])" + str(status) + r"(?![0-9])", str(current)):
-                            labels.append(f"HTTP {status}")
+                    for match in re.finditer(r"\b(?:code|status)\s*[:=]\s*([1-5][0-9]{2})\b", str(current)):
+                        labels.append(f"HTTP {match[1]}")
                 break
+        if isinstance(current, httpx.HTTPStatusError):
+            labels.append(f"HTTP {current.response.status_code}")
         for kind in (AttributeError, TypeError, ValueError, OSError, RuntimeError):
             if type(current) is kind:
                 labels.append(kind.__name__)
@@ -200,6 +276,8 @@ def report_failure(stage: str, error: Exception) -> None:
 
 def progress(stage: str) -> str:
     print(f"Pages: {stage}", flush=True)
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        print(f"::notice title=Anki Pages progress::{stage}", flush=True)
     return stage
 
 def main(argv: list[str] | None = None) -> int:
@@ -226,7 +304,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.seed.exists() and not args.discard_previous:
             previous.append(load_package(args.seed, password))
         if args.previous_url and not args.discard_previous:
-            prior = fetch_previous(args.previous_url, password)
+            prior = fetch_previous(args.previous_url, password, include_media=args.source != "ankiweb" or args.cached_media_only)
             if prior:
                 previous.append(prior)
         if args.source == "ankiweb":

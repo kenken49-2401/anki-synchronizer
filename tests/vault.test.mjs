@@ -112,3 +112,30 @@ test("malformed or disguised SVG images cannot create object URLs", async () => 
   revokeMediaURLs(urls);
   assert.equal(urls.size, 0);
 });
+
+test("encrypted image chunks load only from safe same-site names and validate their images", async () => {
+  const bytes = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jf4sAAAAASUVORK5CYII=", "base64");
+  const id = Buffer.from(await crypto.subtle.digest("SHA-256", bytes)).toString("hex");
+  const part = await packageFor({schema_version:1, media:{"private-name.png":{id,mime:"image/png",data:bytes.toString("base64")}}});
+  const filename = "media-" + "a".repeat(64) + ".enc.json";
+  const original = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, options) => {
+    requests.push([url,options]);
+    return new Response(JSON.stringify(part));
+  };
+  try {
+    const key = await importPassword(password);
+    const urls = await createMediaURLs({...empty,media_packages:[filename]},key);
+    assert.equal(urls.size,1);
+    assert.ok(urls.get(id).startsWith("blob:"));
+    revokeMediaURLs(urls);
+    assert.equal(requests[0][0],"./"+filename);
+    assert.equal(requests[0][1].credentials,"omit");
+    assert.equal(requests[0][1].redirect,"error");
+    requests.length=0;
+    await assert.rejects(createMediaURLs({...empty,media_packages:["https://evil.test/private"]},key));
+    assert.equal(requests.length,0);
+    await assert.rejects(createMediaURLs({...empty,media_packages:[filename]},await importPassword("wrong-password-12345678")));
+  } finally { globalThis.fetch = original; }
+});

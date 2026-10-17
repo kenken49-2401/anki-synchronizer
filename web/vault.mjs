@@ -134,7 +134,7 @@ export async function encryptData(value, masterKey) {
   }
 }
 
-export async function fetchPackage(url = "./snapshot.enc.json") {
+export async function fetchPackage(url = "./snapshot.enc.json", limit = MAX_PACKAGE) {
   const res = await fetch(url, {
     cache: "no-store",
     credentials: "omit",
@@ -153,7 +153,7 @@ export async function fetchPackage(url = "./snapshot.enc.json") {
       const { done, value } = await reader.read();
       if (done) break;
       size += value.length;
-      if (size > MAX_PACKAGE) throw new Error("暗号化ファイルが大きすぎます。");
+      if (size > limit) throw new Error("暗号化ファイルが大きすぎます。");
       chunks.push(value);
     }
   } catch (error) {
@@ -188,12 +188,19 @@ function validRaster(bytes, mime) {
   return false;
 }
 
-export async function createMediaURLs(snapshot) {
+export async function createMediaURLs(snapshot, masterKey) {
   const urls = new Map();
-  let total = 0;
-  try {
-    const media = Object.values(snapshot.media || {});
-    if (media.length > 10000) throw new Error();
+  let total = 0, count = 0;
+  const names = new Set();
+  const addMedia = async (values) => {
+    if (!values || typeof values !== "object" || Array.isArray(values)) throw new Error();
+    const media = Object.values(values);
+    count += media.length;
+    if (count > 10000) throw new Error();
+    for (const name of Object.keys(values)) {
+      if (names.has(name)) throw new Error();
+      names.add(name);
+    }
     for (const item of media) {
       if (
         !item ||
@@ -206,7 +213,7 @@ export async function createMediaURLs(snapshot) {
       total += bytes.length;
       if (
         bytes.length > 2 * 1024 * 1024 ||
-        total > 16 * 1024 * 1024 ||
+        total > 128 * 1024 * 1024 ||
         !validRaster(bytes, item.mime)
       )
         throw new Error();
@@ -221,6 +228,17 @@ export async function createMediaURLs(snapshot) {
           item.id,
           URL.createObjectURL(new Blob([bytes], { type: item.mime })),
         );
+    }
+  };
+  try {
+    await addMedia(snapshot.media || {});
+    const packages = snapshot.media_packages || [];
+    if (!Array.isArray(packages) || packages.length > 128 || new Set(packages).size !== packages.length) throw new Error();
+    for (const name of packages) {
+      if (!masterKey || typeof name !== "string" || !/^media-[a-f0-9]{64}\.enc\.json$/.test(name)) throw new Error();
+      const part = await decryptData(await fetchPackage("./" + name, 8 * 1024 * 1024), masterKey);
+      if (part?.schema_version !== 1 || !part.media) throw new Error();
+      await addMedia(part.media);
     }
     return urls;
   } catch {

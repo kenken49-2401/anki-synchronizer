@@ -465,7 +465,7 @@ function login(message = "") {
       $("#password").value = "";
       const key = await importPassword(password);
       const snapshot = await decryptPackage(await fetchPackage(), key);
-      const urls = await createMediaURLs(snapshot);
+      const urls = await createMediaURLs(snapshot, key);
       revokeMediaURLs(state.mediaURLs);
       state.mediaURLs = urls;
       state.masterKey = key;
@@ -1057,7 +1057,7 @@ async function refresh(notify = false) {
         "公開データのプロフィールが変わりました。タグ変更を保存して取り消してから更新してください。",
       );
     withTagChanges(snapshot, state.tagChanges);
-    const urls = state.demo ? new Map() : await createMediaURLs(snapshot);
+    const urls = state.demo ? new Map() : await createMediaURLs(snapshot, state.masterKey);
     revokeMediaURLs(state.mediaURLs);
     state.mediaURLs = urls;
     await reconcileTagDraft(snapshot);

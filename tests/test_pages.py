@@ -285,3 +285,57 @@ def test_safe_actions_diagnostic_never_contains_exception_content(monkeypatch, c
     assert 'PRIVATE_CARD' not in text
     assert 'secret-token-123' not in text
     assert 'https://' not in text
+
+
+def test_sharded_images_roundtrip_in_site_seed_and_previous_deployment(tmp_path, monkeypatch):
+    import httpx
+    monkeypatch.setattr(pages_site, 'MEDIA_CHUNK_BYTES', 1)
+    data = pages_site.prepare_snapshot(with_image())
+    site, seed = tmp_path / 'site', tmp_path / 'seed' / pages_site.PACKAGE_NAME
+    pages_site.build_site(data, PASSWORD, site, seed_output=seed)
+    compact = decrypt(json.loads((site / pages_site.PACKAGE_NAME).read_bytes()), PASSWORD)
+    assert compact['media'] == {} and len(compact['media_packages']) == 1
+    chunk = compact['media_packages'][0]
+    assert pages_site.MEDIA_FILE.fullmatch(chunk)
+    assert pages_site.load_package(seed, PASSWORD) == data
+    assert pages_site.load_package(site / pages_site.PACKAGE_NAME, PASSWORD) == data
+    assert b'PRIVATE_CARD_f128ce' not in (site / chunk).read_bytes()
+    assert base64.b64encode(PNG) not in (site / chunk).read_bytes()
+    requests = []
+    def serve(request):
+        requests.append(request.url.path)
+        assert request.method == 'GET' and not request.content
+        assert 'authorization' not in request.headers
+        return httpx.Response(200, content=(site / request.url.path.rsplit('/', 1)[-1]).read_bytes())
+    original = httpx.Client
+    monkeypatch.setattr(pages_site.httpx, 'Client', lambda **k: original(transport=httpx.MockTransport(serve), **k))
+    assert pages_site.fetch_previous('https://example.test/app/', PASSWORD) == data
+    requests.clear()
+    assert pages_site.fetch_previous('https://example.test/app/', PASSWORD, include_media=False) == compact
+    assert requests == ['/app/snapshot.enc.json']
+    previous_chunk = site / chunk
+    without_images = {**data, 'media': {}}
+    pages_site.build_site(without_images, PASSWORD, site)
+    assert not previous_chunk.exists()
+
+
+@pytest.mark.parametrize('name', ['../private.env', 'https://evil.test/data', 'media-' + 'a' * 64 + '.enc.json?token=x'])
+def test_sharded_image_manifest_cannot_escape_site(name):
+    called = []
+    with pytest.raises(PackageError):
+        pages_site.hydrate_media({'media_packages': [name]}, PASSWORD, lambda name: called.append(name))
+    assert not called
+
+
+def test_sharded_image_tampering_stops_loading(tmp_path, monkeypatch):
+    monkeypatch.setattr(pages_site, 'MEDIA_CHUNK_BYTES', 1)
+    site = tmp_path / 'site'
+    pages_site.build_site(pages_site.prepare_snapshot(with_image()), PASSWORD, site)
+    chunk = next(site.glob('media-*.enc.json'))
+    package = json.loads(chunk.read_text())
+    raw = bytearray(base64.b64decode(package['ciphertext']))
+    raw[-1] ^= 1
+    package['ciphertext'] = base64.b64encode(raw).decode()
+    chunk.write_text(json.dumps(package))
+    with pytest.raises(PackageError):
+        pages_site.load_package(site / pages_site.PACKAGE_NAME, PASSWORD)

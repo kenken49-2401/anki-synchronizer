@@ -17,7 +17,7 @@ import httpx
 from card_media import MAX_MEDIA_BYTES, MAX_TOTAL_BYTES, MAX_MEDIA_FILES, filename, raster, rich, validate_media
 from cloud_sync import CloudSyncError, _validate_endpoint
 
-MAX_ZIP = MAX_TOTAL_BYTES + 256 * 1024
+MAX_ZIP = 8 * MAX_MEDIA_BYTES + 256 * 1024
 
 
 def _response(client, base, method, key, payload, *, local=False):
