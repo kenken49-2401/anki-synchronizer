@@ -416,8 +416,8 @@ export function ankiStatistics(
     total: cards.length,
   };
   const due = new Map(),
-    addedMap = new Map();
-  let workload = 0;
+    addedMap = new Map(),
+    workloadIntervals = new Map();
   for (const card of cards) {
     const state =
       card.queue === -1 || card.suspended
@@ -441,7 +441,11 @@ export function ankiStatistics(
       card.queue !== -1 &&
       [1, 2, 3].includes(card.type)
     ) {
-      workload += 1 / Math.max(1, card.interval || 0);
+      const interval = Math.max(1, card.interval || 0);
+      workloadIntervals.set(
+        interval,
+        (workloadIntervals.get(interval) || 0) + 1,
+      );
       if (card.due_date) {
         const day = card.queue === 1 ? 0 : daysBetween(todayKey, card.due_date);
         due.set(day, (due.get(day) || 0) + 1);
@@ -466,7 +470,14 @@ export function ankiStatistics(
     average: totalDue
       ? totalDue / (Math.max(0, ...due.keys()) - Math.min(0, ...due.keys()) + 1)
       : 0,
-    workload,
+    // Anki reports an integer daily load. Aggregate equal intervals first to
+    // avoid repeated-addition rounding (ten cards / ten days is exactly one).
+    workload: Math.trunc(
+      [...workloadIntervals].reduce(
+        (sum, [interval, count]) => sum + count / interval,
+        0,
+      ),
+    ),
   };
   const retention = [
     ["today", 1],
@@ -501,7 +512,10 @@ export function ankiStatistics(
       all: aggregate(eligible),
     };
   });
-  const reviewCards = cards.filter((c) => c.type === 2);
+  const reviewCards = cards.filter((c) => c.type === 2 || c.type === 3);
+  const easeValues = reviewCards
+    .filter((c) => Number.isFinite(c.ease_factor))
+    .map((c) => c.ease_factor / 10);
   return {
     timezone,
     rolloverHour,
@@ -511,11 +525,12 @@ export function ankiStatistics(
     reviews,
     cardCounts,
     intervals: distribution(reviewCards.map((c) => c.interval)),
-    ease: distribution(
-      reviewCards
-        .filter((c) => c.ease_factor > 0)
-        .map((c) => c.ease_factor / 10),
-    ),
+    ease: {
+      ...distribution(easeValues.map(Math.floor)),
+      average: easeValues.length
+        ? easeValues.reduce((sum, value) => sum + value, 0) / easeValues.length
+        : null,
+    },
     retention,
     hourly,
     answerButtons,

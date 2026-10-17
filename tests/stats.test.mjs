@@ -504,7 +504,7 @@ test("Anki statistics use prior interval, actual card states, OR deck scope and 
   ); // Anki excludes filtered reviews
   assert.equal(s.futureDue.overdue, 1);
   assert.equal(s.futureDue.tomorrow, 1);
-  assert.equal(s.intervals.median, 50);
+  assert.equal(s.intervals.median, 30);
   assert.equal(s.ease.median, 225);
   assert.equal(s.calendar.length, 2);
   assert.equal(s.added[0].day, "2026-10-17");
@@ -584,5 +584,51 @@ test("real deleted-card history counts globally and is excluded from selected de
   assert.deepEqual(
     studyReviews({ ...snapshot, orphan_reviews: [{ ...orphan, card_id: 1 }] }),
     [kept],
+  );
+});
+
+test("native distributions include relearning, inactive cards and zero ease; bins truncate while mean stays precise", async () => {
+  const { ankiStatistics } = await import("../web/stats.mjs");
+  const cards = [
+    card(1, { type: 2, queue: 2, interval: 0, ease_factor: 0 }),
+    card(2, { type: 3, queue: -1, interval: 10, ease_factor: 2355 }),
+    card(3, { type: 3, queue: -2, interval: 40, ease_factor: 2505 }),
+    card(4, { type: 1, queue: 3, interval: 100, ease_factor: 3000 }),
+  ];
+  const stats = ankiStatistics({ cards, reviews: [] });
+  assert.deepEqual(stats.intervals, {
+    count: 3,
+    median: 10,
+    bins: [
+      { value: 0, count: 1 },
+      { value: 10, count: 1 },
+      { value: 40, count: 1 },
+    ],
+  });
+  assert.deepEqual(stats.ease, {
+    count: 3,
+    median: 235,
+    bins: [
+      { value: 0, count: 1 },
+      { value: 235, count: 1 },
+      { value: 250, count: 1 },
+    ],
+    average: 162,
+  });
+});
+
+test("native workload truncates the aggregate and retains exact repeated-interval totals", async () => {
+  const { ankiStatistics } = await import("../web/stats.mjs");
+  const make = (interval, count) =>
+    Array.from({ length: count }, (_, i) =>
+      card(i + 1, { type: 2, queue: 2, interval }),
+    );
+  assert.equal(
+    ankiStatistics({ cards: make(2, 3), reviews: [] }).futureDue.workload,
+    1,
+  );
+  assert.equal(
+    ankiStatistics({ cards: make(10, 10), reviews: [] }).futureDue.workload,
+    1,
   );
 });

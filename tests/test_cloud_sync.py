@@ -227,3 +227,49 @@ def test_pure_analytics_agree_with_pinned_anki_native_graphs(tmp_path):
         assert sum(row['count'] for row in stats['hourly']) == sum(row.get('total', 0) for row in native['hours']['all_time']) == 5
     finally:
         col.close()
+
+
+@pytest.mark.parametrize('kind,queue,interval,factor,seconds_due', [
+    (0, 0, 0, 2355, False), (0, -2, 0, 2355, False),
+    (1, 1, 0, 2355, True), (1, 3, 0, 2355, False),
+    (1, -2, 0, 2355, False), (1, -3, 0, 2355, False),
+    (1, -2, 0, 2355, True), (1, -1, 0, 2355, False),
+    (2, 2, 40, 2355, False), (2, -1, 40, 2355, False),
+    (2, -2, 40, 2355, False), (2, -3, 40, 2355, False),
+    (3, 1, 40, 2355, True), (3, 3, 40, 2355, False),
+    (3, -1, 40, 2355, False), (3, -2, 40, 2355, False),
+    (3, -3, 40, 2355, False), (3, -2, 40, 2355, True),
+    (2, 2, 0, 0, False), (3, 3, 0, 0, False),
+])
+def test_scheduling_distributions_and_due_match_native_state_matrix(tmp_path, kind, queue, interval, factor, seconds_due):
+    import json
+    import shutil
+    from pathlib import Path
+    if not shutil.which('node'):
+        pytest.skip('Node is needed for the cross-language statistics comparison')
+    col = Collection(str(tmp_path / 'state-matrix.anki2'))
+    try:
+        note = col.new_note(col.models.by_name('Basic'))
+        note['Front'] = 'Synthetic scheduling parity fixture'
+        col.add_note(note, col.decks.id('Parity'))
+        card = col.get_card(note.card_ids()[0])
+        card.type, card.queue, card.ivl, card.factor = kind, queue, interval, factor
+        card.due = int(time.time()) + 86400 if seconds_due else col.sched.today + 1
+        col.update_card(card)
+        snapshot = cloud_sync._extract_snapshot(col, timezone=os.environ.get('TZ', 'UTC'), query='', allow_empty=False)
+        native = snapshot['native_statistics']['graphs']
+        script = "import {ankiStatistics} from './web/stats.mjs'; let s=''; for await(const c of process.stdin)s+=c; console.log(JSON.stringify(ankiStatistics(JSON.parse(s))));"
+        process = subprocess.run(['node', '--input-type=module', '-e', script], input=json.dumps(snapshot), cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True, check=True)
+        stats = json.loads(process.stdout)
+        assert {str(row['day']): row['count'] for row in stats['futureDue']['bins']} == native.get('future_due', {}).get('future_due', {})
+        assert stats['futureDue']['workload'] == native.get('future_due', {}).get('daily_load', 0)
+        assert {str(row['value']): row['count'] for row in stats['intervals']['bins']} == native.get('intervals', {}).get('intervals', {})
+        assert {str(row['value']): row['count'] for row in stats['ease']['bins']} == native.get('eases', {}).get('eases', {})
+        if stats['ease']['count']:
+            assert stats['ease']['average'] == native.get('eases', {}).get('average', 0)
+        for state, count in native['card_counts']['excluding_inactive'].items():
+            assert stats['cardCounts']['new' if state == 'newCards' else state] == count
+        if kind in (1, 3) and queue in (-2, -3):
+            assert ('due_date' in snapshot['cards'][0]) is not seconds_due
+    finally:
+        col.close()

@@ -29,7 +29,7 @@ const panel = (title, subtitle, body, extra = "") =>
   `<section class="panel anki-panel ${extra}"><div class="anki-heading"><h2>${esc(title)}</h2><p>${esc(subtitle)}</p></div>${body}</section>`;
 
 // Equal numeric widths keep sparse scheduling values from looking equally spaced.
-function numericBins(bins, unit = "") {
+function numericBins(bins, unit = "", bounds = null) {
   const sorted = bins
     .filter((b) => Number.isFinite(Number(b.value)))
     .map((b) => ({ ...b, value: Number(b.value) }))
@@ -44,16 +44,16 @@ function numericBins(bins, unit = "") {
     [1, 2, 5, 10].map((n) => n * power).find((n) => n >= raw) || power * 10;
   const integer = sorted.every((b) => Number.isInteger(b.value));
   const width = integer ? Math.max(1, step) : step,
-    start = Math.floor(min / width) * width;
+    start = bounds?.start ?? Math.floor(min / width) * width;
   const groups = Array.from(
     { length: Math.floor((max - start) / width) + 1 },
     (_, i) => {
       const lower = start + i * width,
-        upper = lower + width - (integer ? 1 : 0);
+        upper = Math.min(max, lower + width - (integer ? 1 : 0));
       return {
         value: lower,
         count: 0,
-        label: `${num(lower, 1)}${width > 1 || !integer ? `–${num(upper, 1)}` : ""}${unit}`,
+        label: `${num(lower, 1)}${upper > lower && (width > 1 || !integer) ? `–${num(upper, 1)}` : ""}${unit}`,
       };
     },
   );
@@ -64,6 +64,53 @@ function numericBins(bins, unit = "") {
   return groups;
 }
 
+// Every bar occupies an equal number of calendar days, including inactive days.
+// Long histories use at most 120 buckets instead of creating one SVG node per day.
+function timelineBins(rows, field = "count", scope = {}) {
+  const valid = rows.filter(
+    (row) =>
+      /^\d{4}-\d{2}-\d{2}$/.test(row.day) &&
+      Number.isFinite(Date.parse(row.day)),
+  );
+  if (!valid.length) return [];
+  const dayMs = 86400000;
+  const first = valid.reduce(
+    (min, row) => Math.min(min, Date.parse(row.day)),
+    Infinity,
+  );
+  const anchor = scope.bins?.[0]?.day;
+  const start =
+    anchor && Number.isFinite(Date.parse(anchor))
+      ? Math.min(first, Date.parse(anchor))
+      : first;
+  const last = valid.reduce(
+    (max, row) => Math.max(max, Date.parse(row.day)),
+    -Infinity,
+  );
+  const scopeStart =
+    anchor && Number.isFinite(Date.parse(anchor)) ? Date.parse(anchor) : start;
+  const end =
+    scope.days > 0
+      ? Math.max(last, scopeStart + (scope.days - 1) * dayMs)
+      : last;
+  const span = Math.round((end - start) / dayMs) + 1;
+  const bucketDays = Math.max(1, Math.ceil(span / 120));
+  const dateLabel = (ms) => new Date(ms).toISOString().slice(0, 10);
+  const bins = Array.from({ length: Math.ceil(span / bucketDays) }, (_, i) => {
+    const day = start + i * bucketDays * dayMs;
+    const until = Math.min(end, day + (bucketDays - 1) * dayMs);
+    return {
+      count: 0,
+      label: dateLabel(day) + (until > day ? `〜${dateLabel(until)}` : ""),
+    };
+  });
+  for (const row of valid)
+    bins[
+      Math.floor((Date.parse(row.day) - start) / dayMs / bucketDays)
+    ].count += field === "time" ? value(row.time) / 60000 : value(row.count);
+  return bins;
+}
+
 // SVG numeric attributes avoid inline styles and keep charts compatible with CSP.
 function histogram(
   bins,
@@ -71,6 +118,7 @@ function histogram(
     label = "枚数",
     format = (n) => num(n),
     cumulative = false,
+    cumulativeTotal = null,
     accuracy = false,
     percent = false,
     color = "purple",
@@ -84,7 +132,10 @@ function histogram(
     width = 580,
     top = 12;
   const max = Math.max(...bins.map((b) => value(b.count)), 1),
-    sum = bins.reduce((a, b) => a + value(b.count), 0);
+    sum =
+      cumulativeTotal > 0
+        ? cumulativeTotal
+        : bins.reduce((a, b) => a + value(b.count), 0);
   const step = width / bins.length;
   let running = 0;
   const bars = bins
@@ -135,7 +186,7 @@ function distribution(title, subtitle, data, unit = "日") {
   ];
   const chart =
     unit === "日"
-      ? `<label class="anki-range-label">表示範囲 <select data-anki-range>${ranges.map(([key, label]) => `<option value="${key}"${key === "all" ? " selected" : ""}>${label}</option>`).join("")}</select></label>${ranges.map(([key, , subset]) => `<div data-anki-range-chart="${key}"${key === "all" ? "" : " hidden"}>${histogram(numericBins(subset, unit), { cumulative: true })}</div>`).join("")}`
+      ? `<label class="anki-range-label">表示範囲 <select data-anki-range>${ranges.map(([key, label]) => `<option value="${key}"${key === "all" ? " selected" : ""}>${label}</option>`).join("")}</select></label>${ranges.map(([key, , subset]) => `<div data-anki-range-chart="${key}"${key === "all" ? "" : " hidden"}>${histogram(numericBins(subset, unit), { cumulative: true, cumulativeTotal: total })}</div>`).join("")}`
       : histogram(numericBins(bins, unit), { cumulative: true });
   return panel(
     title,
@@ -147,6 +198,14 @@ function distribution(title, subtitle, data, unit = "日") {
           "中央値",
           data?.median == null ? "—" : `${num(data.median, 1)}${unit}`,
         ],
+        ...(data?.average !== undefined
+          ? [
+              [
+                "平均",
+                data.average == null ? "—" : `${num(data.average, 2)}${unit}`,
+              ],
+            ]
+          : []),
       ]) +
       (bins.length
         ? table(
@@ -208,11 +267,7 @@ function reviews(s) {
     .map(
       (mode) =>
         `<div data-anki-review-chart="${mode}"${mode === "time" ? " hidden" : ""}>${histogram(
-          bins.map((b) => ({
-            ...b,
-            label: String(b.day).slice(5),
-            count: mode === "time" ? value(b.time) / 60000 : value(b.count),
-          })),
+          timelineBins(bins, mode, r),
           {
             label: mode === "time" ? "学習時間（分）" : "回答数",
             format: (n) => num(n, 1),
@@ -265,18 +320,27 @@ function future(s) {
   const chart = `<div class="anki-future-controls"><label class="anki-range-label">表示範囲 <select data-anki-range>${ranges.map(([key, label]) => `<option value="${key}">${label}</option>`).join("")}</select></label><label class="anki-overdue-label"><input type="checkbox" data-anki-overdue checked> 延滞込み</label></div>${ranges
     .map(([key, , limit]) =>
       [true, false]
-        .map(
-          (overdue) =>
-            `<div data-anki-range-chart="${key}" data-anki-overdue-chart="${overdue}"${key === "month" && overdue ? "" : " hidden"}>${histogram(
-              numericBins(
-                bins
-                  .filter((b) => b.day <= limit && (overdue || b.day >= 0))
-                  .map((b) => ({ ...b, value: b.day })),
-                "日",
-              ),
-              { cumulative: true },
-            )}</div>`,
-        )
+        .map((overdue) => {
+          const visible = bins.filter(
+            (b) => b.day <= limit && (overdue || b.day >= 0),
+          );
+          const start = Math.min(0, ...visible.map((b) => b.day));
+          const end = Number.isFinite(limit)
+            ? limit
+            : Math.max(0, ...visible.map((b) => b.day));
+          const days = end - start + 1;
+          const total = visible.reduce((sum, b) => sum + value(b.count), 0);
+          const overdueTotal = visible
+            .filter((b) => b.day < 0)
+            .reduce((sum, b) => sum + value(b.count), 0);
+          return `<div data-anki-range-chart="${key}" data-anki-overdue-chart="${overdue}"${key === "month" && overdue ? "" : " hidden"}>${histogram(numericBins([...visible.map((b) => ({ ...b, value: b.day })), { value: start, count: 0 }, { value: end, count: 0 }], "日", { start }), { cumulative: true })}${metrics(
+            [
+              ["表示範囲の延滞", `${num(overdueTotal)}枚`],
+              ["表示範囲の合計", `${num(total)}枚`],
+              ["表示範囲の平均", `${num(total / days, 1)}枚 / 日`],
+            ],
+          )}<p class="anki-note">平均は表示範囲の合計 ÷ ${num(days)}日（${num(start)}〜${num(end)}日後、期日0枚の日を含む）です。</p></div>`;
+        })
         .join(""),
     )
     .join("")}`;
@@ -286,9 +350,6 @@ function future(s) {
     s.availability?.dueDates === false
       ? empty("次回期日のデータがありません。新しい形式で同期してください。")
       : `${chart}${metrics([
-          ["延滞", `${num(f.overdue)}枚`],
-          ["合計", `${num(f.total)}枚`],
-          ["平均", `${num(f.average, 1)}枚 / 日`],
           ["明日が期日", `${num(f.tomorrow)}枚`],
           [
             "現在の負荷",
@@ -404,7 +465,7 @@ function buttons(s) {
 export function renderAnkiInsights(s = {}) {
   const t = s.today || {},
     added = s.added || [];
-  return `<div class="anki-insights"><p class="anki-scope-note">日付の区切り：${num(s.rolloverHour ?? 4)}時 · ${esc(s.timezone || "コレクションのタイムゾーン")}。グラフは上で選択したデッキ・期間を集計します。カードの状態・復習間隔・期日は現在の状態です。</p><div class="anki-grid">${panel(
+  return `<div class="anki-insights"><p class="anki-scope-note">日付の区切り：${num(s.rolloverHour ?? 4)}時 · ${esc(s.timezone || "コレクションのタイムゾーン")}。すべて選択したデッキが対象です。学習・時間帯・回答ボタン・追加は選択した期間、カレンダーは全履歴、正答率は表の各期間を集計します。今日の集計は当日、カード状態・復習間隔・易しさ・FSRSは現在の状態です。今後の期日は各グラフの表示範囲に従います。</p><div class="anki-grid">${panel(
     "今日",
     "今日の学習を振り返る。",
     metrics([
@@ -419,7 +480,7 @@ export function renderAnkiInsights(s = {}) {
   )}${future(s)}${calendar(s.calendar || [])}${reviews(s)}${states(s)}${distribution("復習間隔", "次の復習までの間隔日数とカード枚数。", s.intervals)}${distribution("カードの易しさ", "易しさが低いほど、カードが表示される頻度が高くなります。", s.ease, "%")}${retention(s)}${hourly(s)}${buttons(s)}${panel(
     "追加",
     "新規カードを追加した日と枚数。",
-    histogram(added.map((b) => ({ ...b, label: String(b.day).slice(5) }))) +
+    histogram(timelineBins(added, "count", s.reviews)) +
       metrics([
         [
           "追加したカード",

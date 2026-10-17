@@ -88,6 +88,20 @@ def _extract_snapshot(col: Collection, *, timezone: str, query: str, allow_empty
             if model is None or deck is None:
                 raise CloudSyncError("Downloaded collection contains missing note types or decks.")
             rendered = card.render_output()
+            due_fields = {}
+            due = card.odue if card.odid else card.due
+            # Buried learning cards retain either day-based or Unix-second due
+            # values. Only the former can become an absolute review day.
+            day_due = card.type == 2 or card.queue == 3 or (
+                card.type in (1, 3) and card.queue in (-2, -3) and due < 1_000_000_000
+            )
+            if day_due:
+                try:
+                    due_fields["due_date"] = (study_date + timedelta(days=due - timing.days_elapsed)).isoformat()
+                except OverflowError:
+                    pass  # An unsupported far-future value is not a calendar date.
+            elif card.queue in (1, 4):
+                due_fields["due_date"] = datetime.fromtimestamp(card.due, ZoneInfo(timezone)).date().isoformat()
             cards.append({
                 "id": _int(int(card.id), minimum=1),
                 "note_id": _int(int(note.id), minimum=1),
@@ -101,9 +115,7 @@ def _extract_snapshot(col: Collection, *, timezone: str, query: str, allow_empty
                 "suspended": card.queue == -1,
                 "queue": int(card.queue), "type": int(card.type), "ease_factor": card.factor,
                 "added_at": int(card.id),
-                **({"due_date": (study_date + timedelta(days=(card.odue if card.odid else card.due) - timing.days_elapsed)).isoformat()}
-                   if card.type == 2 or card.queue == 3 else
-                   {"due_date": datetime.fromtimestamp(card.due, ZoneInfo(timezone)).date().isoformat()} if card.queue in (1, 4) else {}),
+                **due_fields,
                 **({"stability": card.memory_state.stability, "difficulty": card.memory_state.difficulty} if card.memory_state else {}),
                 **({"desired_retention": card.desired_retention} if card.desired_retention is not None else {}),
             })

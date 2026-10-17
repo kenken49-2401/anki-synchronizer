@@ -112,3 +112,107 @@ test("empty rendering and binding without mounted insights are safe", () => {
   assert.doesNotThrow(() => bindAnkiInsights(null));
   assert.doesNotThrow(() => bindAnkiInsights({ querySelector: () => null }));
 });
+
+const section = (html, title) =>
+  html.split(`<h2>${title}</h2>`)[1].split("</section>")[0];
+const variant = (html, range, overdue) =>
+  html
+    .split(
+      `data-anki-range-chart="${range}" data-anki-overdue-chart="${overdue}"`,
+    )[1]
+    .split("data-anki-range-chart=")[0];
+
+test("future summaries follow both horizon and overdue controls with explicit denominator", () => {
+  const html = section(
+    renderAnkiInsights({
+      ...sample,
+      futureDue: {
+        ...sample.futureDue,
+        bins: [...sample.futureDue.bins, { day: 100, count: 20 }],
+        total: 25,
+      },
+    }),
+    "今後の期日",
+  );
+  const month = variant(html, "month", true);
+  assert.match(month, /表示範囲の合計<\/dt><dd>5枚/);
+  assert.match(month, /表示範囲の平均<\/dt><dd>0.2枚 \/ 日/);
+  assert.ok(month.includes("32日（-1〜30日後"));
+  const noOverdue = variant(html, "month", false);
+  assert.match(noOverdue, /表示範囲の延滞<\/dt><dd>0枚/);
+  assert.match(noOverdue, /表示範囲の合計<\/dt><dd>2枚/);
+  assert.ok(noOverdue.includes("31日（0〜30日後"));
+  assert.ok(noOverdue.includes("30日: 0 枚数"));
+  assert.ok(variant(html, "quarter", false).includes("90日: 0 枚数"));
+  assert.ok(variant(html, "year", false).includes("365日: 0 枚数"));
+  assert.match(variant(html, "all", true), /表示範囲の合計<\/dt><dd>25枚/);
+});
+
+test("ease average preserves precise backend value instead of averaging floored bins", () => {
+  const html = section(
+    renderAnkiInsights({
+      ...sample,
+      ease: {
+        count: 2,
+        median: 250,
+        average: 250.45,
+        bins: [{ value: 250, count: 2 }],
+      },
+    }),
+    "カードの易しさ",
+  );
+  assert.match(html, /平均<\/dt><dd>250.45%/);
+});
+
+test("clipped interval cumulative share uses the full distribution denominator", () => {
+  const html = section(
+    renderAnkiInsights({
+      ...sample,
+      intervals: {
+        count: 8,
+        median: 55,
+        bins: [
+          { value: 1, count: 2 },
+          { value: 10, count: 2 },
+          { value: 100, count: 4 },
+        ],
+      },
+    }),
+    "復習間隔",
+  );
+  const half = html
+    .split('data-anki-range-chart="half"')[1]
+    .split("data-anki-range-chart=")[0];
+  const points = half.match(/class="anki-cumulative" points="([^"]+)"/)[1];
+  assert.equal(Number(points.split(" ").at(-1).split(",")[1]), 77.5); // 50% of 131px chart height.
+});
+
+test("sparse timelines retain zero days, full years and bounded chronological buckets", () => {
+  const rows = [
+    { day: "2023-01-01", count: 1, time: 1000 },
+    { day: "2023-01-03", count: 2, time: 2000 },
+  ];
+  const html = renderAnkiInsights({
+    ...sample,
+    reviews: { ...sample.reviews, bins: rows, days: 3 },
+    added: rows,
+  });
+  assert.ok(section(html, "学習").includes("2023-01-02: 0 回答数"));
+  assert.ok(section(html, "追加").includes("2023-01-02: 0 枚数"));
+  const long = renderAnkiInsights({
+    ...sample,
+    reviews: {
+      ...sample.reviews,
+      bins: [rows[0], { day: "2043-01-01", count: 1 }],
+      days: 0,
+    },
+    added: [],
+  });
+  const countChart = section(long, "学習").split(
+    'data-anki-review-chart="time"',
+  )[0];
+  assert.ok((countChart.match(/<rect /g) || []).length <= 120);
+  assert.ok(countChart.includes("2023-01-01"));
+  assert.ok(countChart.includes("2043-01-01"));
+  assert.ok(html.includes("カレンダーは全履歴、正答率は表の各期間"));
+});
