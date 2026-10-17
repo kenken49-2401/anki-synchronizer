@@ -146,6 +146,47 @@ def write_public_assets(output: Path, *, setup_pending: bool = False) -> None:
     _atomic_write(output / ".nojekyll", b"")
 
 
+
+def report_failure(stage: str, error: Exception) -> None:
+    # Emit fixed labels only. Exception messages/URLs/locals may contain private data.
+    safe_messages = {
+        "Set ANKIWEB_HKEY to an AnkiWeb sync token.": "ANKIWEB_HKEY is missing or malformed.",
+        "AnkiWeb endpoint must be an HTTPS ankiweb.net subdomain URL.": "ANKIWEB_ENDPOINT is invalid; copy only its value from secrets.env.",
+        "PAGES_PASSWORD must contain 16 to 1024 UTF-8 bytes; use a long random password.": "PAGES_PASSWORD is missing or outside the supported length.",
+        "Create an encrypted seed using the local AnkiConnect importer first.": "No encrypted seed exists. Select source=ankiweb for an AnkiWeb import.",
+        "More than 500 referenced images; narrow the collection query.": "Referenced image count exceeds the supported limit.",
+        "Cannot decrypt the package; check the password and file integrity.": "The previous data cannot be decrypted with PAGES_PASSWORD.",
+        "Previous Pages data could not be read; existing deployment was preserved.": "Could not retrieve previous encrypted data; deployment was preserved.",
+    }
+    labels = []
+    current = error
+    for _ in range(4):
+        if current is None:
+            break
+        label = safe_messages.get(str(current))
+        if label:
+            labels.append(label)
+        for kind in (AttributeError, TypeError, ValueError, OSError, RuntimeError):
+            if type(current) is kind:
+                labels.append(kind.__name__)
+                break
+        trace = current.__traceback__
+        while trace:
+            file = Path(trace.tb_frame.f_code.co_filename)
+            if file.parent == ROOT and file.name in {"pages_site.py", "cloud_sync.py", "anki_media.py", "dashboard.py", "connector.py", "card_media.py"}:
+                labels.append(f"{file.name}:{trace.tb_lineno}")
+            trace = trace.tb_next
+        current = current.__cause__ or current.__context__
+    message = f"Pages build failed during {stage}. " + " / ".join(labels)
+    print(message, file=sys.stderr, flush=True)
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        print(f"::error title=Anki Pages diagnostic::{message}", flush=True)
+
+
+def progress(stage: str) -> str:
+    print(f"Pages: {stage}", flush=True)
+    return stage
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", choices=("ankiweb", "ankiconnect", "seed"), default="ankiweb")
@@ -161,9 +202,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--discard-previous", action="store_true", default=os.environ.get("PAGES_DISCARD_PREVIOUS") == "true",
                         help="Explicit fresh import for password rotation; ignore old seeds and deployment")
     args = parser.parse_args(argv)
+    stage = progress("checking configuration")
     try:
         password = os.environ.get("PAGES_PASSWORD", "")
         password_bytes(password)  # Fail before contacting Anki or writing files.
+        stage = progress("reading previous encrypted data")
         previous = []
         if args.seed.exists() and not args.discard_previous:
             previous.append(load_package(args.seed, password))
@@ -172,28 +215,30 @@ def main(argv: list[str] | None = None) -> int:
             if prior:
                 previous.append(prior)
         if args.source == "ankiweb":
+            stage = progress("downloading and reading AnkiWeb collection")
             raw = export_ankiweb(os.environ.get("ANKIWEB_HKEY", ""), os.environ.get("ANKIWEB_ENDPOINT") or None,
                                  timezone=args.timezone, query=args.query, allow_empty=args.allow_empty)
             if not args.cached_media_only:
+                stage = progress("downloading referenced images")
                 from anki_media import download_media
                 raw["media"] = download_media(raw, os.environ.get("ANKIWEB_HKEY", ""), os.environ.get("ANKIWEB_ENDPOINT") or None)
                 raw["media_complete"] = True
         elif args.source == "ankiconnect":
+            stage = progress("reading local AnkiConnect")
             raw = export_local(api_key=os.environ.get("ANKI_CONNECT_API_KEY"), expected_profile=args.profile,
                                timezone=args.timezone, query=args.query)
         else:
             if not previous:
                 raise PackageError("Create an encrypted seed using the local AnkiConnect importer first.")
             raw = restore_source(previous[-1])
+        stage = progress("validating cards, reviews and images")
         snapshot = prepare_snapshot(raw, previous)
+        stage = progress("encrypting and writing public site")
         build_site(snapshot, password, args.output, seed_output=args.seed_output)
         print("Encrypted Pages site built. No plaintext collection or credentials were published.")
         return 0
-    except (PackageError, ConnectorError, SnapshotValidationError, OSError, ValueError):
-        print("Pages build failed. Check configuration, password, source and size limits; existing deployment was preserved.", file=sys.stderr)
-        return 1
-    except Exception:
-        print("Pages build failed; private diagnostics were not logged.", file=sys.stderr)
+    except Exception as exc:
+        report_failure(stage, exc)
         return 1
 
 
