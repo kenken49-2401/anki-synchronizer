@@ -77,3 +77,26 @@ def test_empty_collection_does_not_clear_dashboard(tmp_path):
         assert cloud_sync._extract_snapshot(col, timezone='Asia/Tokyo', query='', allow_empty=True)['cards'] == []
     finally:
         col.close()
+
+
+def test_read_only_metadata_selects_collection_shard():
+    from unittest.mock import Mock
+    col = Mock()
+    auth = sync_pb2.SyncAuth(hkey='test-secret-key', endpoint=cloud_sync.DEFAULT_ENDPOINT)
+    col.sync_status.return_value = sync_pb2.SyncStatusResponse(new_endpoint='https://sync2.ankiweb.net/')
+    cloud_sync.resolve_download_endpoint(col, auth)
+    col.sync_status.assert_called_once_with(auth)
+    assert auth.endpoint == 'https://sync2.ankiweb.net/'
+    col.sync_collection.assert_not_called()
+    col.sync_media.assert_not_called()
+
+
+@pytest.mark.parametrize('endpoint', ['https://evil.example/', 'https://user@sync2.ankiweb.net/', 'http://sync2.ankiweb.net/'])
+def test_discovered_shard_is_validated(endpoint):
+    from unittest.mock import Mock
+    col = Mock()
+    auth = sync_pb2.SyncAuth(hkey='test-secret-key', endpoint=cloud_sync.DEFAULT_ENDPOINT)
+    col.sync_status.return_value = sync_pb2.SyncStatusResponse(new_endpoint=endpoint)
+    with pytest.raises(cloud_sync.CloudSyncError):
+        cloud_sync.resolve_download_endpoint(col, auth)
+    assert auth.endpoint == cloud_sync.DEFAULT_ENDPOINT

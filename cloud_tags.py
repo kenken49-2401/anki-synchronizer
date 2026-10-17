@@ -12,7 +12,7 @@ import tempfile
 from anki import sync_pb2
 from anki.collection import Collection
 
-from cloud_sync import DEFAULT_ENDPOINT, MAX_COLLECTION_BYTES, _validate_endpoint, CloudSyncError
+from cloud_sync import DEFAULT_ENDPOINT, MAX_COLLECTION_BYTES, _validate_endpoint, CloudSyncError, resolve_download_endpoint
 from note_identity import note_fingerprint
 from tag_import import validate_changes
 
@@ -26,12 +26,13 @@ class TagConflict(CloudTagError):
 
 
 @contextmanager
-def _download(auth):
+def _download(auth, *, test_local_only=False):
     with tempfile.TemporaryDirectory(prefix="anki-tags-") as directory:
         col = None
         try:
             path = Path(directory) / "collection.anki2"
             col = Collection(str(path))
+            resolve_download_endpoint(col, auth, test_local_only=test_local_only)
             col.close_for_full_sync()
             col._backend.full_upload_or_download(
                 sync_pb2.FullUploadOrDownloadRequest(auth=auth, upload=False))
@@ -107,7 +108,7 @@ def apply_cloud_changes(package, hkey, endpoint=None, *, _test_endpoint=None):
     if not changes:
         return {'notes': 0, 'tags_added': 0, 'verified': True}
     try:
-        with _download(auth) as col:
+        with _download(auth, test_local_only=_test_endpoint is not None) as col:
             # Finish a clean sync before editing, to include the phone's latest work.
             _normal_sync(col, auth, test_endpoint=_test_endpoint)
             notes, pending = _preflight(col, changes)
@@ -121,7 +122,7 @@ def apply_cloud_changes(package, hkey, endpoint=None, *, _test_endpoint=None):
                 _preflight(col, changes)
                 _normal_sync(col, auth, test_endpoint=_test_endpoint)
         # A completed sync response alone is insufficient to acknowledge a queue item.
-        with _download(auth) as verified:
+        with _download(auth, test_local_only=_test_endpoint is not None) as verified:
             notes, missing = _preflight(verified, changes)
             if any(missing.values()) or any(not tags <= {t.lower() for t in notes[nid].tags}
                                            for nid, tags in original.items()):

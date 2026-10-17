@@ -119,6 +119,19 @@ def _extract_snapshot(col: Collection, *, timezone: str, query: str, allow_empty
     return snapshot
 
 
+
+def resolve_download_endpoint(col: Collection, auth: sync_pb2.SyncAuth, *, test_local_only: bool = False) -> None:
+    """Read server metadata first, as Anki does, to discover the account's shard.
+
+    Login provides a token, not the collection server. A direct full download
+    from the login server can return a non-sync response (missing original size).
+    sync_status only reads metadata; it never sends cards, reviews or media.
+    """
+    status = col.sync_status(auth)
+    if status.new_endpoint:
+        auth.endpoint = _validate_endpoint(status.new_endpoint, test_local_only=test_local_only)
+
+
 def export_snapshot(
     hkey: str,
     endpoint: str | None = None,
@@ -151,6 +164,7 @@ def export_snapshot(
                 path = Path(directory) / "collection.anki2"
                 col = Collection(str(path))
                 auth = sync_pb2.SyncAuth(hkey=hkey, endpoint=selected_endpoint, io_timeout_secs=60)
+                resolve_download_endpoint(col, auth, test_local_only=_test_endpoint is not None)
                 col.close_for_full_sync()
                 # Never call sync_collection: even normal sync can upload edits.
                 col._backend.full_upload_or_download(sync_pb2.FullUploadOrDownloadRequest(auth=auth, upload=False))
