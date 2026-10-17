@@ -31,6 +31,11 @@ def archive(extra=None):
         for name in app.ESSENTIAL:
             z.writestr(f"anki-synchronizer-{NEW}/{name}", "new source")
         for name, value in (extra or []):
+            if isinstance(name, str):
+                entry = zipfile.ZipInfo(name)
+                # Keep the malformed bytes in the archive on Windows as well.
+                entry.filename = name
+                name = entry
             z.writestr(name, value)
     return output.getvalue()
 

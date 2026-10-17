@@ -85,7 +85,9 @@ def extract_source(data: bytes, destination: Path, version: str) -> None:
         selected = []
         seen = set()
         for entry in entries:
-            name = entry.filename
+            # ZipInfo normalizes backslashes on Windows and truncates NULs.
+            # Validate the original name before either transformation hides it.
+            name = entry.orig_filename
             path = PurePosixPath(name)
             if ("\\" in name or "\x00" in name or path.is_absolute() or ".." in path.parts
                     or ":" in name or not path.parts or path.parts[0] != prefix
