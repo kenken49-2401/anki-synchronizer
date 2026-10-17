@@ -17,6 +17,7 @@ import hashlib
 import hmac
 from html.parser import HTMLParser
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -184,6 +185,13 @@ def validate_snapshot(value: Any) -> dict[str, Any]:
         except (ZoneInfoNotFoundError, ValueError) as exc:
             raise SnapshotValidationError("source.timezone must be an IANA timezone") from exc
         safe_source["timezone"] = zone
+    if "rollover_hour" in source:
+        safe_source["rollover_hour"] = _integer(source["rollover_hour"], "source.rollover_hour", 0, 23)
+    if "history_scope" in source:
+        safe_source["history_scope"] = _text(source["history_scope"], "source.history_scope", 64)
+    for field in ("orphan_review_count", "collection_review_count"):
+        if field in source:
+            safe_source[field] = _integer(source[field], "source." + field)
     synced_at = _text(value.get("synced_at"), "synced_at", 64)
     try:
         timestamp = datetime.fromisoformat(synced_at.replace("Z", "+00:00"))
@@ -243,30 +251,69 @@ def validate_snapshot(value: Any) -> dict[str, Any]:
             "due": _integer(card.get("due", 0), "card.due", -MAX_ID),
             "suspended": suspended,
         })
+        for field in ("queue", "type", "ease_factor", "added_at"):
+            if field in card:
+                safe_cards[-1][field] = _integer(card[field], "card." + field, -MAX_ID)
+        if "due_date" in card:
+            date = _text(card["due_date"], "card.due_date", 10)
+            try:
+                datetime.strptime(date, "%Y-%m-%d")
+            except ValueError:
+                raise SnapshotValidationError("card.due_date must be YYYY-MM-DD") from None
+            safe_cards[-1]["due_date"] = date
+        for field in ("stability", "difficulty", "desired_retention", "retrievability"):
+            if field in card:
+                number = card[field]
+                if type(number) not in (int, float) or not math.isfinite(number) or not 0 <= number <= MAX_ID:
+                    raise SnapshotValidationError("invalid card." + field)
+                safe_cards[-1][field] = number
         for side in ("front", "back"):
             html, refs = rich(card[side], media, answer_only=side == "back")
             safe_cards[-1][side + "_html"] = html
             referenced.update(refs)
+    orphans = value.get("orphan_reviews", [])
+    if not isinstance(orphans, list) or len(reviews) + len(orphans) > MAX_REVIEWS:
+        raise SnapshotValidationError("combined review count exceeds limit")
+    if orphans and (safe_source["kind"] != "ankiweb" or safe_source.get("history_scope") != "collection"):
+        raise SnapshotValidationError("orphan_reviews require a complete collection export")
     safe_reviews: list[dict[str, int]] = []
+    safe_orphans: list[dict[str, int]] = []
     review_ids: set[int] = set()
-    for review in reviews:
-        if not isinstance(review, dict):
-            raise SnapshotValidationError("each review must be an object")
-        review_id = _integer(review.get("id"), "review.id", 1)
-        card_id = _integer(review.get("card_id"), "review.card_id", 1)
-        if review_id in review_ids:
-            raise SnapshotValidationError("review ids must be unique")
-        if card_id not in card_ids:
-            raise SnapshotValidationError("review.card_id must refer to an included card")
-        review_ids.add(review_id)
-        safe_reviews.append({
-            "id": review_id,
-            "card_id": card_id,
-            "ease": _integer(review.get("ease"), "review.ease", 0, 4),
-            "time_ms": _integer(review.get("time_ms"), "review.time_ms", 0, 86_400_000),
-            "type": _integer(review.get("type"), "review.type", 0, 5),
-        })
+    for is_orphan, entries, target in ((False, reviews, safe_reviews), (True, orphans, safe_orphans)):
+        for review in entries:
+            if not isinstance(review, dict):
+                raise SnapshotValidationError("each review must be an object")
+            review_id = _integer(review.get("id"), "review.id", 1)
+            card_id = _integer(review.get("card_id"), "review.card_id", 1)
+            if review_id in review_ids:
+                raise SnapshotValidationError("review ids must be unique")
+            if not is_orphan and card_id not in card_ids:
+                raise SnapshotValidationError("review.card_id must refer to an included card")
+            if is_orphan and card_id in card_ids:
+                raise SnapshotValidationError("orphan review must refer to a missing card")
+            review_ids.add(review_id)
+            target.append({
+                "id": review_id,
+                "card_id": card_id,
+                "ease": _integer(review.get("ease"), "review.ease", 0, 4),
+                "time_ms": _integer(review.get("time_ms"), "review.time_ms", 0, 86_400_000),
+                "type": _integer(review.get("type"), "review.type", 0, 5),
+            })
+            for field in ("interval", "last_interval", "ease_factor"):
+                if field in review:
+                    target[-1][field] = _integer(review[field], "review." + field, -MAX_ID)
     result = {"schema_version": 1, "source": safe_source, "synced_at": synced_at, "cards": safe_cards, "reviews": safe_reviews}
+    if safe_orphans:
+        result["orphan_reviews"] = safe_orphans
+    if "native_statistics" in value:
+        native = value["native_statistics"]
+        # Data only; never rendered as markup or interpreted as executable content.
+        try:
+            if not isinstance(native, dict) or len(json.dumps(native, allow_nan=False)) > 2_000_000:
+                raise ValueError()
+            result["native_statistics"] = json.loads(json.dumps(native, allow_nan=False))
+        except (ValueError, TypeError, RecursionError):
+            raise SnapshotValidationError("invalid native_statistics") from None
     used_media = {name: item for name, item in media.items() if name in referenced}
     if used_media:
         result["media"] = used_media
@@ -502,7 +549,7 @@ def create_dashboard(config: DashboardConfig | None = None) -> Starlette:
             raise HTTPException(422, str(exc)) from None
         except OSError:
             raise HTTPException(503, "Data could not be saved; check the storage") from None
-        return JSONResponse({"ok": True, "cards": len(snapshot["cards"]), "reviews": len(snapshot["reviews"]), "synced_at": snapshot["synced_at"]})
+        return JSONResponse({"ok": True, "cards": len(snapshot["cards"]), "reviews": len(snapshot["reviews"]) + len(snapshot.get("orphan_reviews", [])), "synced_at": snapshot["synced_at"]})
 
     async def health(request: Request) -> JSONResponse:
         return JSONResponse({"status": "ok"})

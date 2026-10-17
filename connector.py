@@ -240,6 +240,11 @@ def export_snapshot(
                     "due": _integer(card.get("due"), "学習期限"),
                     "suspended": _integer(card.get("queue"), "キュー") == -1,
                 })
+                cards[-1]["queue"] = _integer(card.get("queue"), "キュー")
+                cards[-1]["added_at"] = card_id
+                for remote, local in (("type", "type"), ("factor", "ease_factor")):
+                    if remote in card:
+                        cards[-1][local] = _integer(card[remote], local)
                 card_reviews = history[str(card_id)]
                 if not isinstance(card_reviews, list):
                     raise ConnectorError("AnkiConnect の学習履歴形式が不正です。")
@@ -259,6 +264,9 @@ def export_snapshot(
                         "time_ms": _integer(review.get("time"), "学習時間", minimum=0),
                         "type": _integer(review.get("type"), "学習種別", minimum=0, maximum=5),
                     })
+                    for remote, local in (("ivl", "interval"), ("lastIvl", "last_interval"), ("factor", "ease_factor")):
+                        if remote in review:
+                            reviews[-1][local] = _integer(review[remote], local)
         if include_media:
             names = set()
             for card in cards:

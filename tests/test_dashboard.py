@@ -369,3 +369,44 @@ def test_rejects_unsafe_media(attachment):
     data['media'] = {'image.png': attachment}
     with pytest.raises(ValueError):
         validate_snapshot(data)
+
+
+@pytest.mark.parametrize('field,value', [('stability', float('nan')), ('difficulty', float('inf')), ('desired_retention', True), ('queue', 2.5), ('added_at', '123'), ('due_date', '2026-02-30')])
+def test_rejects_invalid_optional_statistics_fields(field, value):
+    from dashboard import SnapshotValidationError
+    data = snapshot()
+    data['cards'][0][field] = value
+    with pytest.raises(SnapshotValidationError):
+        validate_snapshot(data)
+
+
+def test_preserves_optional_statistics_without_changing_legacy_schema():
+    data = snapshot()
+    data['source'].update(rollover_hour=4, orphan_review_count=2, collection_review_count=5)
+    data['cards'][0].update(queue=2, type=2, ease_factor=2350, added_at=100, due_date='2026-10-17', stability=32.5, difficulty=4.2, desired_retention=.9)
+    data['reviews'][0].update(last_interval=21, interval=1, ease_factor=2350)
+    data['native_statistics'] = {'days': 365, 'graphs': {'true_retention': {'all_time': {'mature_failed': 1}}}}
+    result = validate_snapshot(data)
+    assert result['schema_version'] == 1
+    assert result['source']['orphan_review_count'] == 2
+    assert result['cards'][0]['stability'] == 32.5
+    assert result['reviews'][0]['last_interval'] == 21
+    assert result['native_statistics'] == data['native_statistics']
+
+
+def test_orphan_history_requires_collection_scope_and_unique_unknown_ids():
+    from dashboard import SnapshotValidationError
+    data = snapshot()
+    orphan = {**data['reviews'][0], 'id': 1792116000100, 'card_id': 999, 'last_interval': 21}
+    data['orphan_reviews'] = [orphan]
+    with pytest.raises(SnapshotValidationError, match='complete collection'):
+        validate_snapshot(data)
+    data['source'].update(kind='ankiweb', history_scope='collection')
+    assert validate_snapshot(data)['orphan_reviews'][0] == orphan
+    data['orphan_reviews'][0]['card_id'] = 100
+    with pytest.raises(SnapshotValidationError, match='missing card'):
+        validate_snapshot(data)
+    data['orphan_reviews'][0]['card_id'] = 999
+    data['orphan_reviews'][0]['id'] = data['reviews'][0]['id']
+    with pytest.raises(SnapshotValidationError, match='unique'):
+        validate_snapshot(data)

@@ -426,3 +426,163 @@ test("large histories reuse one date formatter per timezone without mixing local
     time: 10000000,
   });
 });
+
+test("Anki statistics use prior interval, actual card states, OR deck scope and study rollover", async () => {
+  const { ankiStatistics } = await import("../web/stats.mjs");
+  const now = "2026-10-17T04:00:00Z"; // Tokyo 13:00
+  const cards = [
+    card(1, {
+      deck: "Science",
+      type: 2,
+      queue: 2,
+      interval: 100,
+      ease_factor: 2500,
+      due_date: "2026-10-16",
+      added_at: Date.parse("2026-10-17T04:00Z"),
+    }),
+    card(2, {
+      deck: "Language::Words",
+      type: 2,
+      queue: 2,
+      interval: 10,
+      ease_factor: 2000,
+      due_date: "2026-10-18",
+    }),
+    card(3, { deck: "Other", type: 0, queue: 0 }),
+    card(4, { deck: "Science", type: 3, queue: 1, interval: 1 }),
+    card(5, { deck: "Science", type: 2, queue: -2, interval: 50 }),
+  ];
+  const reviews = [
+    review(1, "2026-10-16T19:01:00Z", {
+      last_interval: 1,
+      ease: 1,
+      time_ms: 2000,
+    }),
+    review(2, "2026-10-16T20:00:00Z", {
+      last_interval: 21,
+      ease: 3,
+      time_ms: 3000,
+    }),
+    review(1, "2026-10-16T18:59:00Z", { last_interval: 22, ease: 3 }), // prior Anki study day
+    review(4, "2026-10-16T21:00:00Z", { type: 2, last_interval: -30, ease: 3 }), // learning not true retention
+    review(4, "2026-10-16T22:00:00Z", {
+      type: 0,
+      last_interval: -86400,
+      ease: 3,
+    }), // day-long learning qualifies
+    review(1, "2026-10-16T23:00:00Z", { type: 3, last_interval: 1, ease: 3 }),
+    review(3, "2026-10-17T01:00:00Z", { last_interval: 30 }),
+  ];
+  const s = ankiStatistics(
+    { cards, reviews },
+    { now, days: 1, decks: ["Science", "Language"], includeSubdecks: true },
+  );
+  assert.equal(s.today.count, 5);
+  assert.equal(s.today.time, 8000);
+  assert.deepEqual(s.cardCounts, {
+    new: 0,
+    learn: 0,
+    relearn: 1,
+    young: 1,
+    mature: 1,
+    suspended: 0,
+    buried: 1,
+    unknown: 0,
+    total: 4,
+  });
+  const retention = s.retention.find((r) => r.period === "today");
+  assert.deepEqual(retention.young, { count: 3, correct: 2, rate: 2 / 3 });
+  assert.deepEqual(retention.mature, { count: 1, correct: 1, rate: 1 });
+  assert.deepEqual(s.answerButtons, {
+    learn: [0, 0, 3, 0],
+    young: [1, 0, 0, 0],
+    mature: [0, 0, 1, 0],
+  });
+  assert.equal(
+    s.hourly.reduce((n, r) => n + r.count, 0),
+    4,
+  ); // Anki excludes filtered reviews
+  assert.equal(s.futureDue.overdue, 1);
+  assert.equal(s.futureDue.tomorrow, 1);
+  assert.equal(s.intervals.median, 50);
+  assert.equal(s.ease.median, 225);
+  assert.equal(s.calendar.length, 2);
+  assert.equal(s.added[0].day, "2026-10-17");
+  assert.equal(s.availability.previousIntervals, true);
+  assert.deepEqual(
+    filterCards(cards, {
+      decks: ["Science", "Language"],
+      includeSubdecks: true,
+    }).map((c) => c.id),
+    [1, 2, 4, 5],
+  );
+});
+
+test("Anki four-hour rollover follows wall time across DST rather than subtracting four elapsed hours", async () => {
+  const { ankiStatistics } = await import("../web/stats.mjs");
+  assert.equal(
+    dayKey("2026-03-08T07:30:00Z", "America/New_York", 4),
+    "2026-03-07",
+  ); //03:30 after spring forward
+  assert.equal(
+    dayKey("2026-03-08T08:00:00Z", "America/New_York", 4),
+    "2026-03-08",
+  );
+  assert.equal(
+    dayKey("2026-11-01T08:30:00Z", "America/New_York", 4),
+    "2026-10-31",
+  ); //03:30 after fall back
+  assert.equal(
+    dayKey("2026-11-01T09:00:00Z", "America/New_York", 4),
+    "2026-11-01",
+  );
+  const s = ankiStatistics(
+    { cards: [card(1)], reviews: [review(1, "2026-03-08T07:30:00Z")] },
+    { timezone: "America/New_York", now: "2026-03-08T08:30:00Z", days: 1 },
+  );
+  assert.equal(s.today.count, 0);
+  assert.equal(s.calendar[0].day, "2026-03-07");
+  assert.equal(s.availability.scheduling, false);
+  assert.equal(s.availability.previousIntervals, false);
+  assert.equal(s.retention[0].all.rate, null);
+  assert.equal(s.intervals.median, null);
+});
+
+test("real deleted-card history counts globally and is excluded from selected decks", async () => {
+  const { ankiStatistics } = await import("../web/stats.mjs");
+  const now = "2026-10-17T04:00:00Z";
+  const kept = review(1, "2026-10-17T01:00:00Z", { last_interval: 1 });
+  const orphan = review(99, "2026-10-17T02:00:00Z", {
+    last_interval: 21,
+    time_ms: 3000,
+  });
+  const snapshot = {
+    source: { history_scope: "collection" },
+    cards: [card(1)],
+    reviews: [kept],
+    orphan_reviews: [orphan],
+  };
+  assert.deepEqual(studyReviews(snapshot), [kept, orphan]);
+  const all = ankiStatistics(snapshot, { now });
+  assert.equal(all.today.count, 2);
+  assert.equal(all.today.time, 4000);
+  assert.equal(all.retention[0].mature.correct, 1);
+  const subset = ankiStatistics(snapshot, { now, decks: ["日本語"] });
+  assert.equal(subset.today.count, 1);
+  assert.equal(subset.today.time, 1000);
+  assert.equal(subset.retention[0].mature.count, 0);
+  assert.equal(
+    periodSummary(snapshot, { now }).decks.find(
+      (d) => d.deck === "削除済みカード",
+    ).time,
+    3000,
+  );
+  assert.deepEqual(
+    studyReviews({ ...snapshot, source: { history_scope: "included_cards" } }),
+    [kept],
+  );
+  assert.deepEqual(
+    studyReviews({ ...snapshot, orphan_reviews: [{ ...orphan, card_id: 1 }] }),
+    [kept],
+  );
+});

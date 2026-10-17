@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Iterable
+from contextlib import contextmanager
 from html import escape
 import hashlib
 import json
@@ -11,6 +12,8 @@ from pathlib import Path
 import re
 import sys
 import tempfile
+import time
+from zoneinfo import ZoneInfo
 from urllib.parse import urlsplit
 
 import httpx
@@ -25,6 +28,7 @@ from pages_crypto import MAX_PACKAGE_BYTES, PackageError, decrypt, encrypt, pass
 ROOT = Path(__file__).resolve().parent
 PACKAGE_NAME = "snapshot.enc.json"
 ASSETS = {"index.html", "app.js", "styles.css", "stats.mjs", "vault.mjs", "tags.mjs", "tag-queue.mjs", "updates.mjs",
+          "device-session.mjs", "anki-insights.mjs", "anki-insights.css",
           "manifest.webmanifest", "icon-180.png", "icon-192.png", "icon-512.png"}
 BUILD_FILE = "release.json"
 MEDIA_FILE = re.compile(r"media-[a-f0-9]{64}\.enc\.json")
@@ -230,6 +234,26 @@ def write_public_assets(output: Path, *, setup_pending: bool = False) -> None:
 
 
 
+
+@contextmanager
+def anki_timezone(zone: str):
+    """Use the requested timezone for Anki's native scheduler and graphs."""
+    ZoneInfo(zone)
+    if not hasattr(time, "tzset"):
+        yield
+        return
+    previous = os.environ.get("TZ")
+    try:
+        os.environ["TZ"] = zone
+        time.tzset()
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = previous
+        time.tzset()
+
 def report_failure(stage: str, error: Exception) -> None:
     # Emit fixed labels only. Exception messages/URLs/locals may contain private data.
     safe_messages = {
@@ -316,8 +340,9 @@ def main(argv: list[str] | None = None) -> int:
                 previous.append(prior)
         if args.source == "ankiweb":
             stage = progress("downloading and reading AnkiWeb collection")
-            raw = export_ankiweb(os.environ.get("ANKIWEB_HKEY", ""), os.environ.get("ANKIWEB_ENDPOINT") or None,
-                                 timezone=args.timezone, query=args.query, allow_empty=args.allow_empty)
+            with anki_timezone(args.timezone):
+                raw = export_ankiweb(os.environ.get("ANKIWEB_HKEY", ""), os.environ.get("ANKIWEB_ENDPOINT") or None,
+                                     timezone=args.timezone, query=args.query, allow_empty=args.allow_empty)
             if not args.cached_media_only:
                 stage = progress("downloading referenced images")
                 from anki_media import download_media

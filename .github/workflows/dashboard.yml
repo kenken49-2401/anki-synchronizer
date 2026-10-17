@@ -27,12 +27,9 @@ jobs:
         run: uv run --frozen pytest -q
       - name: Check browser JavaScript
         run: |
-          node --check web/app.js
-          node --check web/stats.mjs
-          node --check web/vault.mjs
-          node --check web/tags.mjs
-          node --check web/tag-queue.mjs
-          node --check web/updates.mjs
+          for script in web/*.js web/*.mjs; do
+            node --check "$script"
+          done
       - name: Verify learning statistics
         run: node --test tests/*.test.mjs
 

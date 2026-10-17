@@ -8,7 +8,8 @@ Credentials come from environment variables and are never written to disk.
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone as datetime_timezone
+from datetime import datetime, timedelta, timezone as datetime_timezone
+from google.protobuf.json_format import MessageToDict
 from pathlib import Path
 import os
 import re
@@ -72,6 +73,9 @@ def _extract_snapshot(col: Collection, *, timezone: str, query: str, allow_empty
         raise CloudSyncError("No cards were downloaded or matched the query; existing dashboard data was preserved. Use --allow-empty only deliberately.")
     if len(card_ids) > MAX_CARDS:
         raise CloudSyncError("Card count exceeds the dashboard limit; narrow --query.")
+    timing = col._backend.sched_timing_today()
+    rollover = int(col.conf.get("rollover", 4))
+    study_date = datetime.fromtimestamp(timing.next_day_at).date() - timedelta(days=1)
     cards: list[dict[str, Any]] = []
     reviews: list[dict[str, Any]] = []
     for offset in range(0, len(card_ids), BATCH_SIZE):
@@ -95,26 +99,64 @@ def _extract_snapshot(col: Collection, *, timezone: str, query: str, allow_empty
                 "lapses": _int(card.lapses, minimum=0),
                 "interval": _int(card.ivl), "due": _int(card.due),
                 "suspended": card.queue == -1,
+                "queue": int(card.queue), "type": int(card.type), "ease_factor": card.factor,
+                "added_at": int(card.id),
+                **({"due_date": (study_date + timedelta(days=(card.odue if card.odid else card.due) - timing.days_elapsed)).isoformat()}
+                   if card.type == 2 or card.queue == 3 else
+                   {"due_date": datetime.fromtimestamp(card.due, ZoneInfo(timezone)).date().isoformat()} if card.queue in (1, 4) else {}),
+                **({"stability": card.memory_state.stability, "difficulty": card.memory_state.difficulty} if card.memory_state else {}),
+                **({"desired_retention": card.desired_retention} if card.desired_retention is not None else {}),
             })
+            if card.memory_state:
+                # Ask Anki for its native FSRS estimate, including its exact
+                # elapsed-day/decay rules. Never substitute an approximate formula.
+                native_card_stats = col._backend.card_stats(cid=int(card.id))
+                if native_card_stats.HasField("fsrs_retrievability"):
+                    cards[-1]["retrievability"] = native_card_stats.fsrs_retrievability
         # Fetch one past the remaining allowance, so limits always fail closed.
         placeholders = ",".join("?" for _ in batch)
         rows = col.db.all(
-            f"select id, cid, ease, time, type from revlog where cid in ({placeholders}) order by id limit ?",
+            f"select id, cid, ease, time, type, ivl, lastIvl, factor from revlog where cid in ({placeholders}) order by id limit ?",
             *batch, MAX_REVIEWS - len(reviews) + 1,
         )
         if len(reviews) + len(rows) > MAX_REVIEWS:
             raise CloudSyncError("Review count exceeds the dashboard limit; narrow --query.")
-        for rid, cid, ease, duration, kind in rows:
+        for rid, cid, ease, duration, kind, ivl, last_ivl, factor in rows:
             reviews.append({
                 "id": _int(rid, minimum=1), "card_id": _int(cid, minimum=1),
                 "ease": _int(ease, minimum=0, maximum=4),
                 "time_ms": _int(duration, minimum=0), "type": _int(kind, minimum=0, maximum=5),
+                "interval": _int(ivl), "last_interval": _int(last_ivl), "ease_factor": _int(factor, minimum=0),
+            })
+    orphan_review_count = int(col.db.scalar("select count(*) from revlog where cid not in (select id from cards)"))
+    orphan_reviews = []
+    if not query and orphan_review_count:
+        if len(reviews) + orphan_review_count > MAX_REVIEWS:
+            raise CloudSyncError("Review count exceeds the dashboard limit; narrow --query.")
+        for rid, cid, ease, duration, kind, ivl, last_ivl, factor in col.db.all(
+            "select id,cid,ease,time,type,ivl,lastIvl,factor from revlog where cid not in (select id from cards) order by id"
+        ):
+            orphan_reviews.append({
+                "id": _int(rid, minimum=1), "card_id": _int(cid, minimum=1),
+                "ease": _int(ease, minimum=0, maximum=4), "time_ms": _int(duration, minimum=0),
+                "type": _int(kind, minimum=0, maximum=5), "interval": _int(ivl),
+                "last_interval": _int(last_ivl), "ease_factor": _int(factor, minimum=0),
             })
     snapshot = {
         "schema_version": 1,
-        "source": {"kind": "ankiweb", "profile": "AnkiWeb", "timezone": timezone},
+        "source": {"kind": "ankiweb", "profile": "AnkiWeb", "timezone": timezone, "rollover_hour": rollover, "history_scope": "included_cards" if query else "collection", "orphan_review_count": orphan_review_count, "collection_review_count": int(col.db.scalar("select count(*) from revlog"))},
         "synced_at": datetime.now(datetime_timezone.utc).isoformat(),
         "cards": cards, "reviews": sorted(reviews, key=lambda review: review["id"]),
+    }
+    if orphan_reviews:
+        snapshot["orphan_reviews"] = orphan_reviews
+    # Keep Anki's own graph response for exact comparison with the desktop statistics.
+    # Its day boundaries use the scheduler's runtime timezone, recorded explicitly.
+    import time
+    snapshot["native_statistics"] = {
+        "days": 365, "query": query, "timezone": os.environ.get("TZ", time.tzname[0]),
+        "history_scope": "collection" if not query else "query",
+        "graphs": MessageToDict(col._backend.graphs(search=query, days=365), preserving_proto_field_name=True),
     }
     _encode_snapshot(snapshot)
     return snapshot
@@ -198,6 +240,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--allow-empty", action="store_true", help="Deliberately permit replacing the dashboard with zero cards")
     args = parser.parse_args(argv)
     try:
+        # This is a dedicated CLI process. Align Anki's Rust/local scheduler with
+        # the requested IANA timezone before creating a collection/backend.
+        ZoneInfo(args.timezone)
+        import time
+        if hasattr(time, "tzset"):
+            os.environ["TZ"] = args.timezone
+            time.tzset()
         server = os.environ.get("DASHBOARD_URL", "")
         token = os.environ.get("ANKI_UPLOAD_TOKEN", "")
         if not server or not token:
@@ -212,7 +261,7 @@ def main(argv: list[str] | None = None) -> int:
             timezone=args.timezone, query=args.query, allow_empty=args.allow_empty,
         )
         upload_snapshot(server, token, snapshot)
-        print(f"Dashboard updated: {len(snapshot['cards']):,} cards, {len(snapshot['reviews']):,} reviews.")
+        print(f"Dashboard updated: {len(snapshot['cards']):,} cards, {len(snapshot['reviews']) + len(snapshot.get('orphan_reviews', [])):,} reviews.")
         return 0
     except ConnectorError as exc:
         print(f"Cloud sync failed: {exc}", file=sys.stderr)

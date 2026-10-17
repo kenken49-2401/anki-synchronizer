@@ -72,7 +72,7 @@ def test_exports_note_tags_rendered_cards_and_full_review_history(anki_mock):
         "id": 101, "note_id": 201, "deck": "日本語::基礎", "model": "Basic",
         "tags": ["exam", "science::physics"], "front": "<b>問題</b>", "back": "<hr>答え",
         "fields": {"Front": "問題", "Back": "答え"}, "reps": 3, "lapses": 1,
-        "interval": -30, "due": 400, "suspended": True,
+        "interval": -30, "due": 400, "suspended": True, "queue": -1, "added_at": 101,
     }]
     assert [review["ease"] for review in snapshot["reviews"]] == [1, 3, 0]
     assert [review["time_ms"] for review in snapshot["reviews"]] == [4500, 2500, 0]

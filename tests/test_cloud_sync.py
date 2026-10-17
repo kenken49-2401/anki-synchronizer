@@ -127,3 +127,103 @@ def test_export_omits_repeated_template_css_and_keeps_html_identity(tmp_path, mo
             assert safe['tag_identity'] == note_fingerprint(card['model'], card['fields'])
     finally:
         col.close()
+
+
+def test_exports_scheduling_previous_intervals_fsrs_and_native_graphs(tmp_path):
+    import time
+    from anki.cards import FSRSMemoryState
+    col = Collection(str(tmp_path / 'statistics.anki2'))
+    try:
+        note = col.new_note(col.models.by_name('Basic'))
+        note['Front'] = 'Synthetic statistics fixture'
+        col.add_note(note, col.decks.id('Statistics'))
+        card = col.get_card(note.card_ids()[0])
+        card.type = 2
+        card.queue = 2
+        card.ivl = 40
+        card.factor = 2350
+        card.due = col.sched.today + 1
+        card.memory_state = FSRSMemoryState(stability=40, difficulty=5)
+        card.desired_retention = .9
+        col.update_card(card)
+        rid = int(time.time() * 1000) - 1000
+        col.db.execute('insert into revlog values (?,?,?,?,?,?,?,?,?)', rid, card.id, -1, 1, 1, 30, 2350, 2000, 1)
+        raw = cloud_sync._extract_snapshot(col, timezone='Asia/Tokyo', query='', allow_empty=False)
+        safe = validate_snapshot(raw)
+        assert safe['cards'][0]['type'] == 2
+        assert safe['cards'][0]['queue'] == 2
+        assert safe['cards'][0]['ease_factor'] == 2350
+        assert safe['cards'][0]['stability'] == 40
+        assert safe['cards'][0]['difficulty'] == 5
+        assert safe['cards'][0]['desired_retention'] == pytest.approx(.9)
+        native_card_stats = col._backend.card_stats(cid=int(card.id))
+        if native_card_stats.HasField('fsrs_retrievability'):
+            assert safe['cards'][0]['retrievability'] == pytest.approx(native_card_stats.fsrs_retrievability)
+            assert 0 <= safe['cards'][0]['retrievability'] <= 1
+        else:
+            assert 'retrievability' not in safe['cards'][0]
+        assert safe['cards'][0]['added_at'] == card.id
+        assert safe['cards'][0]['due_date']
+        assert safe['reviews'][0]['last_interval'] == 30
+        assert safe['reviews'][0]['interval'] == 1
+        assert safe['source']['rollover_hour'] == 4
+        assert safe['source']['history_scope'] == 'collection'
+        assert safe['source']['orphan_review_count'] == 0
+        assert safe['source']['collection_review_count'] == 1
+        native = safe['native_statistics']['graphs']
+        assert native['true_retention']['all_time']['mature_failed'] == 1
+        assert native['card_counts']['excluding_inactive']['mature'] == 1
+    finally:
+        col.close()
+
+
+def test_pure_analytics_agree_with_pinned_anki_native_graphs(tmp_path):
+    """Compare actual native statistics against the browser's pure analytics."""
+    import json
+    import shutil
+    from pathlib import Path
+    if not shutil.which('node'):
+        pytest.skip('Node is needed for the cross-language statistics comparison')
+    col = Collection(str(tmp_path / 'native-comparison.anki2'))
+    try:
+        note = col.new_note(col.models.by_name('Basic'))
+        note['Front'] = 'Native comparison fixture'
+        col.add_note(note, col.decks.id('Comparison'))
+        card = col.get_card(note.card_ids()[0])
+        card.type, card.queue, card.ivl, card.factor = 2, 2, 30, 2350
+        card.due = col.sched.today + 1
+        col.update_card(card)
+        timestamp = int(time.time() * 1000) - 10000
+        for i, (kind, ease, prior) in enumerate([(0, 3, 0), (1, 1, 21), (1, 3, 1), (2, 3, -30), (3, 3, 1), (4, 0, 1), (5, 0, 1)]):
+            col.db.execute('insert into revlog values (?,?,?,?,?,?,?,?,?)', timestamp+i, card.id, -1, ease, 1, prior, 2350, 1000, kind)
+        # Deleted-card records are real collection history; raw per-card analytics
+        # cannot attribute them. Native collection graphs retain Anki's authority.
+        col.db.execute('insert into revlog values (?,?,?,?,?,?,?,?,?)', timestamp+99, card.id+100, -1, 3, 10, 21, 2350, 3000, 1)
+        zone = os.environ.get('TZ', 'UTC')
+        snapshot = cloud_sync._extract_snapshot(col, timezone=zone, query='', allow_empty=False)
+        assert snapshot['source']['orphan_review_count'] == 1
+        assert snapshot['source']['collection_review_count'] == 8
+        assert len(snapshot['reviews']) == 7
+        assert len(snapshot['orphan_reviews']) == 1
+        assert validate_snapshot(snapshot)['orphan_reviews'] == snapshot['orphan_reviews']
+        snapshot_path = tmp_path / 'snapshot.json'
+        snapshot_path.write_text(json.dumps(snapshot))
+        script = "import fs from 'node:fs'; import {ankiStatistics} from './web/stats.mjs'; console.log(JSON.stringify(ankiStatistics(JSON.parse(fs.readFileSync(process.argv[1],'utf8')),{days:30})));"
+        process = subprocess.run(['node', '--input-type=module', '-e', script, str(snapshot_path)], cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True, check=True)
+        stats = json.loads(process.stdout)
+        native = snapshot['native_statistics']['graphs']
+        assert stats['today']['count'] == native['today']['answer_count'] == 6
+        assert stats['today']['time'] == native['today']['answer_millis'] == 8000
+        assert stats['today']['correct'] == native['today']['correct_count'] == 5
+        assert stats['cardCounts']['mature'] == native['card_counts']['excluding_inactive']['mature'] == 1
+        assert stats['futureDue']['tomorrow'] == native['future_due']['future_due']['1'] == 1
+        assert stats['answerButtons']['learn'] == native['buttons']['all_time']['learning']
+        assert stats['answerButtons']['young'] == native['buttons']['all_time']['young']
+        assert stats['answerButtons']['mature'] == native['buttons']['all_time']['mature']
+        retention = next(row for row in stats['retention'] if row['period'] == 'all')
+        actual = native['true_retention']['all_time']
+        assert retention['young']['correct'] == actual['young_passed'] == 2
+        assert retention['mature']['count'] - retention['mature']['correct'] == actual['mature_failed'] == 1
+        assert sum(row['count'] for row in stats['hourly']) == sum(row.get('total', 0) for row in native['hours']['all_time']) == 5
+    finally:
+        col.close()

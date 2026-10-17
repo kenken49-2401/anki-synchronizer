@@ -357,3 +357,20 @@ def test_more_than_16_mib_images_keep_main_package_small(tmp_path):
     restored = pages_site.load_package(site / pages_site.PACKAGE_NAME, PASSWORD)
     assert len(restored['media']) == 9
     assert len(list(site.glob('media-*.enc.json'))) >= 2
+
+
+def test_pages_anki_native_export_uses_requested_timezone_and_restores_process(tmp_path, monkeypatch):
+    import os
+    import time
+    if not hasattr(time, 'tzset'):
+        pytest.skip('POSIX timezone activation')
+    previous = os.environ.get('TZ')
+    observed = []
+    def export(*args, **kwargs):
+        observed.append((os.environ.get('TZ'), time.localtime(0).tm_hour))
+        return with_image()
+    monkeypatch.setenv('PAGES_PASSWORD', PASSWORD)
+    monkeypatch.setattr(pages_site, 'export_ankiweb', export)
+    assert pages_site.main(['--source','ankiweb','--cached-media-only','--timezone','Asia/Tokyo','--output',str(tmp_path/'site')]) == 0
+    assert observed == [('Asia/Tokyo',9)]
+    assert os.environ.get('TZ') == previous

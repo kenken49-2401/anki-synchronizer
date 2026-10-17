@@ -14,6 +14,12 @@ import {
   validateChanges,
   withTagChanges,
 } from "./tags.mjs";
+import {
+  rememberDevice,
+  loadDeviceKey,
+  forgetDevice,
+} from "./device-session.mjs";
+import { renderAnkiInsights, bindAnkiInsights } from "./anki-insights.mjs";
 import { watchUpdates } from "./updates.mjs";
 import { tagRequest, unconfirmedTags, TAG_REPOSITORY } from "./tag-queue.mjs";
 import {
@@ -25,7 +31,7 @@ import {
   dayRange,
   deckTree,
   groupCards,
-  periodSummary,
+  ankiStatistics,
 } from "./stats.mjs";
 
 const $ = (s) => document.querySelector(s);
@@ -77,7 +83,9 @@ const state = {
   view: location.hash.slice(1) || "overview",
   tag: "",
   query: "",
-  deck: "",
+  decks: [],
+  deviceRemembered: false,
+  ankiStats: null,
   sort: "default",
   groupBy: ["none", "deck", "folder"].includes(
     localStorage.getItem("atlas-grouping"),
@@ -200,7 +208,9 @@ function demoSnapshot() {
     deck:
       deck === "医学"
         ? `医学::${tag.split("::")[0]}`
-        : `英語::${tag.split("::")[1]}`,
+        : deck === "化学"
+          ? "化学::高分子"
+          : `英語::${tag.split("::")[1]}`,
     model: "Basic",
     tags: i % 4 === 0 ? [tag, "重点復習"] : [tag],
     front,
@@ -211,6 +221,15 @@ function demoSnapshot() {
     interval: 3 + i * 2,
     due: 0,
     suspended: false,
+    queue: 2,
+    type: 2,
+    ease_factor: 2500,
+    due_date: dayKey(
+      new Date(Date.now() + (i - 2) * 86400000),
+      state.timezone,
+      4,
+    ),
+    added_at: Date.now() - (15 + i) * 86400000,
     tag_identity: "0".repeat(64),
   }));
   cards[0].front_html =
@@ -231,13 +250,19 @@ function demoSnapshot() {
         ease: (day + i) % 7 === 0 ? 1 : 2 + (i % 3),
         time_ms: 12000 + ((i * 6700) % 48000),
         type: 1,
+        last_interval: c.interval,
+        interval: c.interval,
       });
       c.reps++;
     }
   }
   return {
     schema_version: 1,
-    source: { profile: "デモプロフィール", kind: "ankiconnect" },
+    source: {
+      profile: "デモプロフィール",
+      kind: "ankiconnect",
+      rollover_hour: 4,
+    },
     synced_at: now.toISOString(),
     cards,
     reviews,
@@ -255,7 +280,27 @@ function setSnapshot(snapshot) {
   const visible = withTagChanges(snapshot, state.tagChanges);
   state.baseSnapshot = snapshot;
   state.snapshot = visible;
-  state.stats = summarize(visible, { timezone: state.timezone });
+  const cards = filterCards(visible.cards, {
+    decks: state.decks,
+    includeSubdecks: state.includeSubdecks,
+  });
+  state.stats = summarize(
+    {
+      ...visible,
+      cards,
+      orphan_reviews: state.decks.length ? [] : visible.orphan_reviews,
+    },
+    {
+      timezone: state.timezone,
+      rolloverHour: visible.source.rollover_hour ?? 4,
+    },
+  );
+  state.ankiStats = ankiStatistics(visible, {
+    days: state.studyDays,
+    timezone: state.timezone,
+    decks: state.decks,
+    includeSubdecks: state.includeSubdecks,
+  });
 }
 
 async function restoreTagDraft(snapshot) {
@@ -451,10 +496,16 @@ function syncLabel() {
 
 function login(message = "") {
   $("#app").innerHTML =
-    `<div class="login-layout"><section class="login-story"><a class="brand" href="./"><span class="brand-mark">A</span>Anki <strong>Atlas</strong></a><div><span class="eyebrow">YOUR LEARNING, CONNECTED</span><h1>学びを、<br>ひとつの景色に。</h1><p>散らばったカードをタグで整理。<br>積み重ねた学習を、見えるかたちに。</p><div class="story-cards"><div>${icon("tag", 24)}<b>タグでつながる知識</b><span>カードを横断して、まとめて読む。</span></div><div>${icon("chart", 24)}<b>毎日の、小さな前進</b><span>正解率と学習時間を振り返る。</span></div></div></div><small>Made for your Anki collection.</small></section><main class="login-main"><div class="login-box"><span class="eyebrow">WELCOME BACK</span><h2>あなたの学習スペースへ</h2><p class="muted">閲覧パスワードで、このブラウザー内だけで復号</p><form id="login-form"><label for="password">パスワード</label><input id="password" name="password" type="password" autocomplete="current-password" required placeholder="ダッシュボードのパスワード"><p id="login-error" class="error" role="alert">${esc(message)}</p><button class="button primary wide" type="submit">ログイン ${icon("arrow", 17)}</button></form><div class="login-divider"><span>まずは雰囲気を見たい方へ</span></div><a class="button subtle wide" href="?demo=1">デモを見てみる ${icon("arrow", 17)}</a><p class="login-note">パスワードはサーバーへ送信・保存しません。<br>AnkiWebのパスワードは入力しないでください。</p></div></main></div>`;
-  if (document.querySelector('meta[name="anki-atlas-setup"]')?.content === "pending") {
+    `<div class="login-layout"><section class="login-story"><a class="brand" href="./"><span class="brand-mark">A</span>Anki <strong>Atlas</strong></a><div><span class="eyebrow">YOUR LEARNING, CONNECTED</span><h1>学びを、<br>ひとつの景色に。</h1><p>散らばったカードをタグで整理。<br>積み重ねた学習を、見えるかたちに。</p><div class="story-cards"><div>${icon("tag", 24)}<b>タグでつながる知識</b><span>カードを横断して、まとめて読む。</span></div><div>${icon("chart", 24)}<b>毎日の、小さな前進</b><span>正解率と学習時間を振り返る。</span></div></div></div><small>Made for your Anki collection.</small></section><main class="login-main"><div class="login-box"><span class="eyebrow">WELCOME BACK</span><h2>あなたの学習スペースへ</h2><p class="muted">閲覧パスワードで、このブラウザー内だけで復号</p><form id="login-form"><label for="password">パスワード</label><input id="password" name="password" type="password" autocomplete="current-password" required placeholder="ダッシュボードのパスワード"><label class="remember-login"><input id="remember-device" type="checkbox" checked>この端末では次回から自動ログイン</label><p id="login-error" class="error" role="alert">${esc(message)}</p><button class="button primary wide" type="submit">ログイン ${icon("arrow", 17)}</button></form><div class="login-divider"><span>まずは雰囲気を見たい方へ</span></div><a class="button subtle wide" href="?demo=1">デモを見てみる ${icon("arrow", 17)}</a><p class="login-note">パスワードはサーバーへ送信しません。<br>共有端末では自動ログインをオフにしてください。<br>AnkiWebのパスワードは入力しないでください。</p></div></main></div>`;
+  if (
+    document.querySelector('meta[name="anki-atlas-setup"]')?.content ===
+    "pending"
+  ) {
     $("#login-form").hidden = true;
-    $("#login-form").insertAdjacentHTML("beforebegin", '<p role="status">アプリの公開は完了しました。自分のカードを表示するにはAnkiの接続設定が必要です。</p><p><a href="https://github.com/kenken49-2401/anki-synchronizer/blob/main/ACTIONS_SETUP.md">Ankiの接続手順を見る →</a></p>');
+    $("#login-form").insertAdjacentHTML(
+      "beforebegin",
+      '<p role="status">アプリの公開は完了しました。自分のカードを表示するにはAnkiの接続設定が必要です。</p><p><a href="https://github.com/kenken49-2401/anki-synchronizer/blob/main/ACTIONS_SETUP.md">Ankiの接続手順を見る →</a></p>',
+    );
   }
   $("#login-form").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -473,7 +524,21 @@ function login(message = "") {
       state.masterKey = key;
       await restoreTagDraft(snapshot);
       setSnapshot(snapshot);
+      let deviceMessage = "";
+      try {
+        if ($("#remember-device").checked) {
+          await rememberDevice(key);
+          state.deviceRemembered = true;
+        } else {
+          await forgetDevice();
+          state.deviceRemembered = false;
+        }
+      } catch {
+        deviceMessage =
+          "端末の自動ログイン設定を保存できませんでした。接続・設定から再試行できます。";
+      }
       shell();
+      if (deviceMessage) toast(deviceMessage);
     } catch (err) {
       $("#login-error").textContent = err.message;
     } finally {
@@ -496,6 +561,17 @@ function shell() {
   document.querySelectorAll("#logout, #header-logout").forEach((el) =>
     el.addEventListener("click", async () => {
       if (!state.demo) {
+        if (state.deviceRemembered) {
+          try {
+            await forgetDevice();
+            state.deviceRemembered = false;
+          } catch {
+            toast(
+              "自動ログイン情報を削除できませんでした。もう一度ログアウトしてください。",
+            );
+            return;
+          }
+        }
         state.masterKey = null;
         revokeMediaURLs(state.mediaURLs);
         state.snapshot = null;
@@ -544,6 +620,9 @@ function view() {
 
 function metrics() {
   const s = state.stats;
+  const retention = state.ankiStats.retention.find(
+    (row) => row.period === "all",
+  )?.all;
   const items = [
     [
       "cards",
@@ -555,10 +634,10 @@ function metrics() {
     ],
     [
       "check",
-      "正解率",
-      percent(s.correct, s.reviews),
+      "Ankiの正答率",
+      percent(retention?.correct || 0, retention?.count || 0),
       "",
-      `${s.reviews.toLocaleString()} 回の回答から集計`,
+      "間隔が1日以上の復習から集計",
       "teal",
     ],
     [
@@ -581,23 +660,98 @@ function metrics() {
   return `<div class="metrics">${items.map(([i, label, value, unit, detail, color]) => `<article class="metric"><div class="metric-top"><span>${label}</span><span class="metric-icon ${color}">${icon(i, 18)}</span></div><div class="metric-number">${value}<small>${unit}</small></div><p>${detail}</p></article>`).join("")}</div>`;
 }
 function chart(days = 7) {
-  const range = dayRange(days, new Date(), state.timezone);
+  const range = dayRange(
+    days,
+    new Date(),
+    state.timezone,
+    state.snapshot?.source.rollover_hour ?? 4,
+  );
   const times = range.map((d) => (state.stats.byDay.get(d)?.time || 0) / 60000);
   const max = Math.max(10, Math.ceil(Math.max(...times) / 5) * 5);
   return `<div class="chart"><div class="chart-axis"><span>${max}分</span><span>${max / 2}</span><span>0</span></div><div class="chart-plot"><div class="chart-grid"><i></i><i></i><i></i></div><div class="chart-bars">${range.map((d, i) => `<div class="chart-column"><div class="bar-track"><div class="chart-bar ${i === days - 1 ? "today" : ""}" data-height="${(times[i] / max) * 100}" title="${esc(d)}：${minutes(times[i] * 60000)}分・${state.stats.byDay.get(d)?.count || 0}回" role="img" aria-label="${d} 学習${minutes(times[i] * 60000)}分"></div></div><span>${days <= 7 ? ["日", "月", "火", "水", "木", "金", "土"][new Date(d + "T00:00:00Z").getUTCDay()] : d.slice(5)}</span></div>`).join("")}</div></div></div>`;
 }
 function heatmap() {
-  const range = dayRange(84, new Date(), state.timezone);
+  const range = dayRange(
+    84,
+    new Date(),
+    state.timezone,
+    state.snapshot.source.rollover_hour ?? 4,
+  );
   const studied = range.filter((d) => state.stats.byDay.get(d)?.count).length;
-  return `<div class="activity-summary"><span><strong>${studied}</strong> 日の積み重ね</span><small>過去12週間</small></div><div class="heatmap" role="img" aria-label="過去84日の学習履歴。${studied}日学習。">${range
+  return `<div class="activity-summary"><span><strong>${studied}</strong> 日の積み重ね</span><small>過去12週間</small></div><div class="heatmap" role="group" aria-label="過去84日の学習履歴">${range
     .map((d) => {
-      const count = state.stats.byDay.get(d)?.count || 0;
-      return `<span class="heat-cell level-${count === 0 ? 0 : count < 10 ? 1 : count < 20 ? 2 : count < 30 ? 3 : 4}" title="${esc(d)}：${count}回"></span>`;
+      const day = state.stats.byDay.get(d) || { count: 0, correct: 0, time: 0 };
+      const label = `${d}：${minutes(day.time)}分・${day.count}回・正答率 ${percent(day.correct, day.count)}`;
+      return `<button type="button" class="heat-cell level-${day.count === 0 ? 0 : day.count < 10 ? 1 : day.count < 20 ? 2 : day.count < 30 ? 3 : 4}" data-activity-label="${esc(label)}" title="${esc(label)}" aria-label="${esc(label)}"></button>`;
     })
     .join(
       "",
-    )}</div><div class="heatmap-legend"><span>毎日の小さな一歩を記録</span><div>少<span class="heat-cell level-0"></span><span class="heat-cell level-1"></span><span class="heat-cell level-2"></span><span class="heat-cell level-3"></span><span class="heat-cell level-4"></span>多</div></div>`;
+    )}</div><output class="activity-detail" id="activity-detail" aria-live="polite">日付にカーソルを合わせるか、タップすると学習時間を表示します。</output><div class="heatmap-legend"><span>Ankiの回答履歴から集計</span><div>少<span class="heat-cell level-0"></span><span class="heat-cell level-1"></span><span class="heat-cell level-2"></span><span class="heat-cell level-3"></span><span class="heat-cell level-4"></span>多</div></div>`;
 }
+function deckPicker(id = "deck-filter") {
+  const selected = new Set(state.decks);
+  const label = selected.size
+    ? `${selected.size}デッキを選択`
+    : "すべてのデッキ";
+  return `<details class="deck-picker" id="${id}"><summary aria-label="デッキを複数選択">${icon("book", 16)}<span>${esc(label)}</span>${icon("chevron", 13)}</summary><div class="deck-picker-menu"><label class="deck-search-label">デッキを検索<input type="search" data-deck-search placeholder="デッキ名を検索" autocomplete="off"></label><button type="button" class="text-button" data-deck-clear>選択を解除（すべて表示）</button><div class="deck-picker-options" role="group" aria-label="デッキの選択">${deckTree(
+    state.snapshot.cards,
+  )
+    .map(
+      (node) =>
+        `<label class="deck-option"><input type="checkbox" data-deck-choice value="${esc(node.name)}" ${selected.has(node.name) ? "checked" : ""}><span>${esc(node.name.replaceAll("::", " / "))}</span><small>${state.includeSubdecks ? node.count : node.directCount}</small></label>`,
+    )
+    .join(
+      "",
+    )}</div><p class="small muted">未選択時はすべて表示します。選択したデッキはカードと統計に共通で適用されます。</p></div></details>`;
+}
+function bindDeckPickers() {
+  document.querySelectorAll(".deck-picker").forEach((picker) => {
+    picker
+      .querySelector("[data-deck-search]")
+      ?.addEventListener("input", (e) => {
+        const query = e.target.value.toLocaleLowerCase();
+        picker.querySelectorAll(".deck-option").forEach((row) => {
+          row.hidden = !row.textContent.toLocaleLowerCase().includes(query);
+        });
+      });
+    picker.querySelectorAll("[data-deck-choice]").forEach((input) =>
+      input.addEventListener("change", () => {
+        const selected = new Set(state.decks);
+        input.checked
+          ? selected.add(input.value)
+          : selected.delete(input.value);
+        state.decks = [...selected];
+        state.page = 0;
+        setSnapshot(state.baseSnapshot);
+        const scroll = window.scrollY,
+          active = input.value,
+          id = picker.id;
+        const query = picker.querySelector("[data-deck-search]").value;
+        const menuScroll = picker.querySelector(
+          ".deck-picker-options",
+        ).scrollTop;
+        shell();
+        const next = document.getElementById(id);
+        next.open = true;
+        const search = next.querySelector("[data-deck-search]");
+        search.value = query;
+        search.dispatchEvent(new Event("input"));
+        next.querySelector(".deck-picker-options").scrollTop = menuScroll;
+        [...next.querySelectorAll("[data-deck-choice]")]
+          .find((el) => el.value === active)
+          ?.focus({ preventScroll: true });
+        window.scrollTo({ top: scroll });
+      }),
+    );
+    picker.querySelector("[data-deck-clear]")?.addEventListener("click", () => {
+      state.decks = [];
+      state.page = 0;
+      setSnapshot(state.baseSnapshot);
+      shell();
+    });
+  });
+}
+
 function tagRows(limit = 5) {
   return state.stats.tags
     .slice(0, limit)
@@ -615,8 +769,9 @@ function overview() {
       "あなたの知識のつながりと、日々の積み重ねを見渡しましょう。",
       `<button class="button subtle" id="refresh">${icon("refresh", 17)}表示を更新</button>`,
     ) +
+    `<div class="scope-controls">${deckPicker("overview-decks")}<span class="muted small">選択したデッキのAnki学習履歴</span></div>` +
     metrics() +
-    `<div class="overview-grid"><section class="panel"><div class="panel-title"><div><h2>学習のリズム</h2><p>1日ごとの学習時間</p></div><span class="chip">過去7日間</span></div>${chart()}<div class="chart-foot"><span><i></i>学習時間</span><strong>今週 ${minutes(dayRange(7, new Date(), state.timezone).reduce((n, d) => n + (state.stats.byDay.get(d)?.time || 0), 0))} 分</strong></div></section><section class="panel"><div class="panel-title"><div><h2>学習アクティビティ</h2><p>続けた日が、見える自信に。</p></div>${icon("calendar", 20)}</div>${heatmap()}</section></div><div class="overview-grid bottom-grid"><section class="panel tag-panel"><div class="panel-title"><div><h2>タグで、知識をつなぐ</h2><p>気になるテーマから、まとめて振り返る。</p></div><button class="text-button" data-view="cards">すべて見る ${icon("arrow", 16)}</button></div>${tagRows()}${!state.stats.tags.length ? '<p class="muted">まだカードがありません。</p>' : ""}</section><section class="learning-note"><span class="eyebrow">YOUR NEXT CHAPTER</span><span class="note-illustration">${icon("book", 66)}</span><h2>覚えるだけじゃなく、<br>つながりを見つけよう。</h2><p>同じタグのカードを並べると、<br>ひとつずつでは見えなかった<br>知識の流れが見えてきます。</p><button class="button primary" data-view="cards">カードをまとめて見る ${icon("arrow", 16)}</button></section></div><div class="sync-strip"><span class="status-dot"></span><span>${state.demo ? "デモデータ" : "最終データ受信"}：${esc(syncLabel())}</span><span>正解率は Again 以外の評価を集計しています。</span></div>`
+    `<div class="overview-grid"><section class="panel"><div class="panel-title"><div><h2>学習のリズム</h2><p>1日ごとの学習時間</p></div><span class="chip">過去7日間</span></div>${chart()}<div class="chart-foot"><span><i></i>学習時間</span><strong>今週 ${minutes(dayRange(7, new Date(), state.timezone, state.snapshot.source.rollover_hour ?? 4).reduce((n, d) => n + (state.stats.byDay.get(d)?.time || 0), 0))} 分</strong></div></section><section class="panel"><div class="panel-title"><div><h2>学習アクティビティ</h2><p>続けた日が、見える自信に。</p></div>${icon("calendar", 20)}</div>${heatmap()}</section></div><div class="overview-grid bottom-grid"><section class="panel tag-panel"><div class="panel-title"><div><h2>タグで、知識をつなぐ</h2><p>気になるテーマから、まとめて振り返る。</p></div><button class="text-button" data-view="cards">すべて見る ${icon("arrow", 16)}</button></div>${tagRows()}${!state.stats.tags.length ? '<p class="muted">まだカードがありません。</p>' : ""}</section><section class="learning-note"><span class="eyebrow">YOUR NEXT CHAPTER</span><span class="note-illustration">${icon("book", 66)}</span><h2>覚えるだけじゃなく、<br>つながりを見つけよう。</h2><p>同じタグのカードを並べると、<br>ひとつずつでは見えなかった<br>知識の流れが見えてきます。</p><button class="button primary" data-view="cards">カードをまとめて見る ${icon("arrow", 16)}</button></section></div><div class="sync-strip"><span class="status-dot"></span><span>${state.demo ? "デモデータ" : "最終データ受信"}：${esc(syncLabel())}</span><span>正解率は Again 以外の評価を集計しています。</span></div>`
   );
 }
 
@@ -681,12 +836,6 @@ function tagEditor(c) {
 }
 function cardsView() {
   const stats = state.stats;
-  const deckOptions = deckTree(state.snapshot.cards)
-    .map(
-      (node) =>
-        `<option value="${esc(node.name)}" ${state.deck === node.name ? "selected" : ""}>${esc("　".repeat(Math.min(6, node.depth)) + node.name.split("::").at(-1))} (${node.count})</option>`,
-    )
-    .join("");
   return (
     heading(
       "EXPLORE YOUR KNOWLEDGE",
@@ -700,7 +849,7 @@ function cardsView() {
     `
   <div class="card-workspace"><aside class="tag-sidebar"><div class="tag-sidebar-heading">タグ一覧<span>${stats.tags.length}</span></div><button class="tag-filter ${!state.tag ? "selected" : ""}" data-tag="">${icon("cards", 17)}<span>すべてのカード</span><small>${stats.cards}</small></button>${stats.tags.map((g, i) => `<button class="tag-filter ${state.tag === g.tag ? "selected" : ""}" data-tag="${esc(g.tag)}"><span class="tag-bullet tag-color-${i % 4}">#</span><span title="${esc(g.tag)}">${esc(g.tag.replaceAll("::", " / "))}</span><small>${g.count}</small></button>`).join("")}</aside>
   <section class="cards-main"><div class="card-toolbar"><label class="search-input">${icon("search", 18)}<input id="search" type="search" placeholder="質問・答え・タグを検索" aria-label="カードを検索" value="${esc(state.query)}"></label>
-  <select id="deck-filter" aria-label="デッキで絞り込み"><option value="">すべてのデッキ</option>${deckOptions}</select>
+  ${deckPicker()}
   <select id="sort" aria-label="並び順"><option value="default">カード順</option><option value="accuracy" ${state.sort === "accuracy" ? "selected" : ""}>正解率が低い順</option><option value="recent" ${state.sort === "recent" ? "selected" : ""}>最近学習した順</option></select></div>
   <div class="folder-controls"><label>まとめ方 ${groupingSelect("grouping")}</label><label class="checkbox-label"><input type="checkbox" id="include-subdecks" ${state.includeSubdecks ? "checked" : ""}>サブデッキを含める</label></div><div id="card-results">${cardResults()}</div></section></div>
   <p class="data-note">${icon("check", 14)} 正解率：Again＝不正解、Hard / Good / Easy＝正解。未回答は「—」。フォルダはAnkiのデッキ／サブデッキに対応します。</p>`
@@ -743,44 +892,21 @@ function cardResults() {
         `<section class="deck-group">${group.name ? `<h3 class="deck-group-heading">${icon("book", 18)}${esc(group.name.replaceAll("::", " / "))}<small>${group.cards.length} / ${totals.get(group.name)} 枚</small></h3>` : ""}${group.cards.map((c) => renderStudyCard(c, cards.indexOf(c) + 1)).join("")}</section>`,
     )
     .join("");
-  return `<div class="collection-heading"><div><span class="eyebrow">COLLECTION</span><h2>${esc((state.tag || state.deck || "すべてのカード").replaceAll("::", " / "))}<span>${cards.length} 枚</span></h2></div><button class="text-button" id="toggle-all">${shown.length && shown.every((c) => state.expanded.has(c.id)) ? "答えをすべて隠す" : "答えをすべて表示"}</button></div><div class="cards-list">${cards.length ? content : '<div class="no-results">' + icon("search", 30) + "<h3>カードが見つかりませんでした</h3><p>検索語や絞り込みを変えてみてください。</p></div>"}</div>
+  return `<div class="collection-heading"><div><span class="eyebrow">COLLECTION</span><h2>${esc((state.tag || (state.decks.length ? state.decks.join("・") : "すべてのカード")).replaceAll("::", " / "))}<span>${cards.length} 枚</span></h2></div><button class="text-button" id="toggle-all">${shown.length && shown.every((c) => state.expanded.has(c.id)) ? "答えをすべて隠す" : "答えをすべて表示"}</button></div><div class="cards-list">${cards.length ? content : '<div class="no-results">' + icon("search", 30) + "<h3>カードが見つかりませんでした</h3><p>検索語や絞り込みを変えてみてください。</p></div>"}</div>
   <div class="pagination"><span>${cards.length ? state.page * pageSize + 1 : 0}–${Math.min((state.page + 1) * pageSize, cards.length)} / ${cards.length} 枚</span><div><button class="button subtle small" id="prev-page" ${state.page === 0 ? "disabled" : ""}>前へ</button><button class="button subtle small" id="next-page" ${(state.page + 1) * pageSize >= cards.length ? "disabled" : ""}>次へ</button></div></div>`;
 }
 function insights() {
-  const days = state.studyDays;
-  const range = dayRange(days || 30, new Date(), state.timezone).reverse();
-  const s = periodSummary(state.baseSnapshot, {
-    days,
+  const report = ankiStatistics(state.snapshot, {
+    days: state.studyDays,
     timezone: state.timezone,
+    decks: state.decks,
+    includeSubdecks: state.includeSubdecks,
   });
-  const total = periodSummary(state.baseSnapshot, {
-    days: 0,
-    timezone: state.timezone,
-  });
-  const period = days ? `過去${days}日間` : "全期間";
-  const stats = [
-    ["学習時間", `${minutes(s.time)} 分`, `${s.activeDays} 日学習`],
-    [
-      "回答回数",
-      `${s.count.toLocaleString()} 回`,
-      `${s.uniqueCards.toLocaleString()} 枚のカード`,
-    ],
-    [
-      "正解率",
-      percent(s.correct, s.count),
-      "Hard / Good / Easyを正解として集計",
-    ],
-    [
-      "平均回答時間",
-      s.count ? `${Math.round(s.averageMs / 100) / 10} 秒` : "—",
-      "1回の回答にかかった時間",
-    ],
-  ];
   return (
     heading(
       "YOUR ANKI STUDY DATA",
       "Ankiの学習データ",
-      "Ankiで記録した学習時間・回数・得意と苦手を振り返れます。",
+      "Ankiの復習履歴・カード状態・今後の期日をまとめて確認できます。",
       '<button class="button subtle" id="refresh">' +
         icon("refresh", 17) +
         "表示を更新</button>",
@@ -789,26 +915,18 @@ function insights() {
       [7, "過去7日間"],
       [30, "過去30日間"],
       [90, "過去90日間"],
+      [365, "過去1年間"],
       [0, "全期間"],
     ]
       .map(
         ([v, label]) =>
-          `<option value="${v}" ${days === v ? "selected" : ""}>${label}</option>`,
+          `<option value="${v}" ${state.studyDays === v ? "selected" : ""}>${label}</option>`,
       )
       .join(
         "",
-      )}</select><p class="muted small">最終データ受信：${esc(syncLabel())}</p></div>` +
-    `<div class="metrics">${stats.map(([label, value, detail]) => `<article class="metric"><div class="metric-top"><span>${label}</span></div><div class="metric-number">${value}</div><p>${detail}</p></article>`).join("")}</div>` +
-    `<p class="study-total">全期間の累計：<strong>${minutes(total.time)} 分</strong> · ${total.count.toLocaleString()} 回回答 · ${total.activeDays} 日学習 · 連続 ${state.stats.streak} 日</p>` +
-    `<div class="overview-grid"><section class="panel"><div class="panel-title"><div><h2>回答の内訳</h2><p>${period}</p></div></div><div class="rating-breakdown">${["Again（もう一度）", "Hard（難しい）", "Good（普通）", "Easy（簡単）"].map((label, i) => `<div><span>${label}</span><strong>${s.byEase[i]} 回</strong><span class="time-bar"><span data-width="${s.count ? (s.byEase[i] / s.count) * 100 : 0}"></span></span></div>`).join("")}</div></section><section class="panel"><div class="panel-title"><div><h2>デッキごとの学習</h2><p>${period} · 学習時間の多い順</p></div></div><div class="table-scroll"><table class="daily-table"><thead><tr><th>デッキ</th><th>学習時間</th><th>回答</th><th>正解率</th></tr></thead><tbody>${s.decks.length ? s.decks.map((d) => `<tr><th>${esc(d.deck.replaceAll("::", " / "))}</th><td>${minutes(d.time)} 分</td><td>${d.count} 回</td><td>${percent(d.correct, d.count)}</td></tr>`).join("") : '<tr><td colspan="4">この期間の回答履歴はありません。</td></tr>'}</tbody></table></div></section></div>` +
-    `<section class="panel"><div class="panel-title"><div><h2>日ごとの学習記録</h2><p>${days ? period : "直近30日間"} · ${esc(state.timezone)}</p></div><span class="chip">Ankiの回答履歴から集計</span></div><div class="table-scroll"><table class="daily-table"><thead><tr><th scope="col">日付</th><th scope="col">回答回数</th><th scope="col">正解率</th><th scope="col">学習時間</th><th scope="col">平均回答時間</th></tr></thead><tbody>${range
-      .map((d) => {
-        const r = state.stats.byDay.get(d) || { count: 0, correct: 0, time: 0 };
-        return `<tr><th scope="row">${esc(d)}${d === dayKey(new Date(), state.timezone) ? '<span class="today-label">今日</span>' : ""}</th><td>${r.count} 回</td><td>${percent(r.correct, r.count)}</td><td>${minutes(r.time)} 分</td><td>${r.count ? `${Math.round(r.time / r.count / 100) / 10} 秒` : "—"}</td></tr>`;
-      })
-      .join(
-        "",
-      )}</tbody></table></div></section><p class="data-note">学習時間はAnkiの回答時間の合計です。アプリでカードを読んだ時間や休憩は含みません。Anki側の計測上限が反映されます。学習端末でAnkiWebへ同期した後、Pagesが更新されると表示に反映されます。</p>`
+      )}</select>${deckPicker("insights-decks")}<label class="checkbox-label"><input type="checkbox" id="include-subdecks" ${state.includeSubdecks ? "checked" : ""}>サブデッキを含める</label></div><p class="muted small">最終データ受信：${esc(syncLabel())}・学習日は${report.rolloverHour}時に切り替わります。</p>` +
+    renderAnkiInsights(report) +
+    `<p class="data-note">Ankiの回答履歴に記録された学習時間を集計しています。アプリでカードを読んだ時間や休憩は含みません。学習した端末をAnkiWebへ同期し、公開データを更新すると反映されます。</p>`
   );
 }
 
@@ -824,7 +942,7 @@ function settings() {
   <div class="settings-grid"><section class="panel"><div class="panel-title"><div><h2>接続の状態</h2><p>閲覧パスワードはブラウザーの外へ送りません。</p></div><span class="pill connected">${state.demo ? "デモ" : "復号済み"}</span></div>
   <dl class="connection-info"><div><dt>プロフィール</dt><dd>${esc(state.snapshot?.source.profile || "未設定")}</dd></div><div><dt>最終データ受信</dt><dd>${esc(syncLabel())}</dd></div><div><dt>接続方式</dt><dd>AnkiWeb / AnkiConnect → 暗号化Pages</dd></div></dl>
   <div class="info-box">PC停止中もGitHub ActionsがAnkiWebから定期取得します。学習した端末でAnkiWebへ同期してください。「表示を更新」は最後に公開されたデータを読み込みます。</div>
-  <label class="setting-label" for="settings-grouping">カードのまとめ方</label>${groupingSelect("settings-grouping")}<p class="muted small">親フォルダごとは最上位のデッキでまとめます。カード一覧でも切り替えられます。</p><label class="setting-label" for="timezone">集計タイムゾーン</label><select id="timezone">${[
+  <div class="device-login-setting"><h3>この端末の自動ログイン</h3><p>${state.deviceRemembered ? "有効です。次回からパスワードなしで開きます。" : "保存されていません。"}</p><button class="button subtle" id="device-login" ${state.demo ? "disabled" : ""}>${state.deviceRemembered ? "この端末の自動ログインを解除" : "この端末で自動ログインを有効にする"}</button></div><label class="setting-label" for="settings-grouping">カードのまとめ方</label>${groupingSelect("settings-grouping")}<p class="muted small">親フォルダごとは最上位のデッキでまとめます。カード一覧でも切り替えられます。</p><label class="setting-label" for="timezone">集計タイムゾーン</label><select id="timezone">${[
     ["Asia/Tokyo", "日本（Asia/Tokyo）"],
     ["UTC", "UTC"],
     ["America/New_York", "ニューヨーク"],
@@ -837,7 +955,7 @@ function settings() {
     .join(
       "",
     )}</select><p class="muted small">このブラウザーの表示設定として保存されます。</p>
-  </section><section class="panel setup-panel"><span class="eyebrow">LOCAL + GITHUB</span><h2>サーバー契約は不要です。</h2><ol class="setup-steps"><li><span>1</span><div><h3>自分のPCで準備</h3><p>閲覧用パスワードを生成し、AnkiWebトークンを手元で取得します。AnkiConnectからのローカル取り込みも使えます。</p></div></li><li><span>2</span><div><h3>GitHubへ安全に設定</h3><p>パスワードとトークンはGitHub Secretsへ登録します。コードへ書き込みません。</p></div></li><li><span>3</span><div><h3>ActionsとPagesを有効化</h3><p>Actionsが暗号化して配信し、この画面で復号します。最初の設定はDASHBOARD.md、自動更新はACTIONS_SETUP.mdをご覧ください。</p></div></li></ol><div class="info-box">ログアウトまたは再読み込みで復号キーを破棄します。閲覧中の端末では内容を見られるため、共有端末では使い終わったらログアウトしてください。</div></section></div>`
+  </section><section class="panel setup-panel"><span class="eyebrow">LOCAL + GITHUB</span><h2>サーバー契約は不要です。</h2><ol class="setup-steps"><li><span>1</span><div><h3>自分のPCで準備</h3><p>閲覧用パスワードを生成し、AnkiWebトークンを手元で取得します。AnkiConnectからのローカル取り込みも使えます。</p></div></li><li><span>2</span><div><h3>GitHubへ安全に設定</h3><p>パスワードとトークンはGitHub Secretsへ登録します。コードへ書き込みません。</p></div></li><li><span>3</span><div><h3>ActionsとPagesを有効化</h3><p>Actionsが暗号化して配信し、この画面で復号します。最初の設定はDASHBOARD.md、自動更新はACTIONS_SETUP.mdをご覧ください。</p></div></li></ol><div class="info-box">自動ログインを有効にした端末では、再読み込み後もパスワードなしで開きます。ログアウトすると、この端末に保存した自動ログイン情報も削除します。</div></section></div>`
   );
 }
 function paintCharts() {
@@ -849,6 +967,34 @@ function paintCharts() {
   });
 }
 function bindView() {
+  bindDeckPickers();
+  bindAnkiInsights($("#view"));
+  document.querySelectorAll("[data-activity-label]").forEach((cell) => {
+    const show = () => {
+      $("#activity-detail").textContent = cell.dataset.activityLabel;
+    };
+    cell.addEventListener("mouseenter", show);
+    cell.addEventListener("focus", show);
+    cell.addEventListener("click", show);
+  });
+  $("#device-login")?.addEventListener("click", async () => {
+    if (state.demo) return;
+    try {
+      if (state.deviceRemembered) await forgetDevice();
+      else await rememberDevice(state.masterKey);
+      state.deviceRemembered = !state.deviceRemembered;
+      shell();
+      toast(
+        state.deviceRemembered
+          ? "この端末で自動ログインを有効にしました。"
+          : "この端末の自動ログインを解除しました。",
+      );
+    } catch {
+      toast(
+        "自動ログインの設定を保存できませんでした。ブラウザーの保存設定を確認してください。",
+      );
+    }
+  });
   document
     .querySelectorAll("[data-queue-tags]")
     .forEach((el) => el.addEventListener("click", openTagQueue));
@@ -906,11 +1052,6 @@ function bindView() {
     state.page = 0;
     updateCards();
   });
-  $("#deck-filter")?.addEventListener("change", (e) => {
-    state.deck = e.target.value;
-    state.page = 0;
-    updateCards();
-  });
   for (const id of ["grouping", "settings-grouping"]) {
     document.getElementById(id)?.addEventListener("change", (e) => {
       state.groupBy = e.target.value;
@@ -924,7 +1065,8 @@ function bindView() {
     state.includeSubdecks = e.target.checked;
     localStorage.setItem("atlas-subdecks", String(state.includeSubdecks));
     state.page = 0;
-    updateCards();
+    setSnapshot(state.baseSnapshot);
+    shell();
   });
   $("#sort")?.addEventListener("change", (e) => {
     state.sort = e.target.value;
@@ -963,25 +1105,36 @@ function bindMedia() {
   mediaObserver?.disconnect();
   const media = state.mediaURLs;
   if (!media.loadImage) return;
-  const load = (image) => media.loadImage(image.dataset.mediaId).then(url => {
-    if (image.isConnected && state.mediaURLs === media) {
-      image.src = url;
-      delete image.dataset.mediaId;
-    }
-  }).catch(() => {
-    if (image.isConnected) image.alt = "画像を読み込めません。表示を更新してください。";
-  });
+  const load = (image) =>
+    media
+      .loadImage(image.dataset.mediaId)
+      .then((url) => {
+        if (image.isConnected && state.mediaURLs === media) {
+          image.src = url;
+          delete image.dataset.mediaId;
+        }
+      })
+      .catch(() => {
+        if (image.isConnected)
+          image.alt = "画像を読み込めません。表示を更新してください。";
+      });
   if (!globalThis.IntersectionObserver) {
     document.querySelectorAll("img[data-media-id]").forEach(load);
     return;
   }
-  mediaObserver = new IntersectionObserver(entries => {
-    for (const entry of entries) if (entry.isIntersecting) {
-      mediaObserver.unobserve(entry.target);
-      load(entry.target);
-    }
-  }, {rootMargin: "300px"});
-  document.querySelectorAll("img[data-media-id]").forEach(image => mediaObserver.observe(image));
+  mediaObserver = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries)
+        if (entry.isIntersecting) {
+          mediaObserver.unobserve(entry.target);
+          load(entry.target);
+        }
+    },
+    { rootMargin: "300px" },
+  );
+  document
+    .querySelectorAll("img[data-media-id]")
+    .forEach((image) => mediaObserver.observe(image));
 }
 function bindCards() {
   bindMedia();
@@ -1044,7 +1197,7 @@ function bindCards() {
 }
 function exportCards() {
   const markdown =
-    `# ${state.tag || state.deck || "Anki カード一覧"}\n\n` +
+    `# ${state.tag || state.decks.join("・") || "Anki カード一覧"}\n\n` +
     groupCards(selectedCards(), state.groupBy)
       .map(
         (group) =>
@@ -1087,7 +1240,9 @@ async function refresh(notify = false) {
         "公開データのプロフィールが変わりました。タグ変更を保存して取り消してから更新してください。",
       );
     withTagChanges(snapshot, state.tagChanges);
-    const urls = state.demo ? new Map() : await createMediaURLs(snapshot, state.masterKey);
+    const urls = state.demo
+      ? new Map()
+      : await createMediaURLs(snapshot, state.masterKey);
     revokeMediaURLs(state.mediaURLs);
     state.mediaURLs = urls;
     await reconcileTagDraft(snapshot);
@@ -1111,7 +1266,30 @@ window.addEventListener("hashchange", () => {
   if (state.stats) shell();
 });
 if (state.demo) await refresh();
-else login();
+else {
+  state.busy = true;
+  try {
+    const key = await loadDeviceKey();
+    if (!key) login();
+    else {
+      state.deviceRemembered = true;
+      const snapshot = await decryptPackage(await fetchPackage(), key);
+      const urls = await createMediaURLs(snapshot, key);
+      state.masterKey = key;
+      state.mediaURLs = urls;
+      await restoreTagDraft(snapshot);
+      setSnapshot(snapshot);
+      shell();
+    }
+  } catch {
+    // A network error or changed password must not erase the saved device key.
+    login(
+      "自動ログインできませんでした。通信状態を確認するか、閲覧パスワードでログインしてください。",
+    );
+  } finally {
+    state.busy = false;
+  }
+}
 
 const appBuild =
   document.querySelector('meta[name="anki-atlas-build"]')?.content || "";
