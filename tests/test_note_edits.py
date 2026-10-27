@@ -73,6 +73,19 @@ def test_all_note_identities_checked_before_any_writes(official):
     assert seed.get_note(notes[1].id)['Front'] == 'Changed on phone first'
 
 
+@pytest.mark.parametrize('html', [
+    '<p><span style="font-weight: bold; color: rgb(255, 0, 0)">Word\u00a0paste</span></p><ol><li>First</li><li>Second</li></ol>',
+    '<div>H<span style="vertical-align: sub; font-size: smaller;">2</span>O {{c1::water}}</div><div><br></div>',
+])
+def test_document_editor_formatting_survives_native_anki_sync(official, html):
+    seed, notes, auth, endpoint, _ = official
+    package = edit_package(notes[:1])
+    package['changes'][0]['set_fields'] = {'Back': html}
+    assert cloud_tags.apply_cloud_changes(package, auth.hkey, _test_endpoint=endpoint)['verified']
+    seed.sync_collection(auth, sync_media=False)
+    assert seed.get_note(notes[0].id)['Back'] == html
+
+
 def test_same_note_conflict_after_upload_is_not_acknowledged(official, monkeypatch):
     seed, notes, auth, endpoint, _ = official
     package = edit_package(notes[:1])

@@ -122,6 +122,7 @@ try {
 
 const noteEditor = createNoteEditor({
   snapshot: () => state.baseSnapshot,
+  media: () => state.mediaURLs,
   key: () => state.masterKey,
   demo: () => state.demo,
   tagPending: (id) => state.tagChanges.has(id),

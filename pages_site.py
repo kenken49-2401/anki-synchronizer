@@ -30,6 +30,7 @@ PACKAGE_NAME = "snapshot.enc.json"
 ASSETS = {"index.html", "app.js", "styles.css", "stats.mjs", "vault.mjs", "tags.mjs", "tag-queue.mjs", "updates.mjs",
           "device-session.mjs", "anki-insights.mjs", "anki-insights.css",
           "note-edits.mjs", "note-editor.mjs",
+          "rich-note-field.mjs",
           "manifest.webmanifest", "icon-180.png", "icon-192.png", "icon-512.png"}
 BUILD_FILE = "release.json"
 MEDIA_FILE = re.compile(r"media-[a-f0-9]{64}\.enc\.json")
@@ -112,6 +113,7 @@ def hydrate_media(snapshot: dict, password: str, read_chunk) -> dict:
         snapshot = {**snapshot, "media": validate_media(media)}
         snapshot.pop("media_packages", None)
         snapshot.pop("media_index", None)
+        snapshot.pop("media_names", None)
     return snapshot
 
 
@@ -140,7 +142,8 @@ def split_media(snapshot: dict, password: str) -> tuple[dict, dict[str, bytes]]:
         finish()
     if len(chunks) > MAX_MEDIA_PACKAGES:
         raise PackageError("Too many encrypted image chunks.")
-    return {**snapshot, "media": {}, "media_packages": list(chunks), "media_index": index}, chunks
+    names = {name: item['id'] for name, item in media.items()}
+    return {**snapshot, "media": {}, "media_packages": list(chunks), "media_index": index, "media_names": names}, chunks
 
 
 def restore_source(snapshot: dict) -> dict:

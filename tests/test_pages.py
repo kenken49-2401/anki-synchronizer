@@ -295,6 +295,8 @@ def test_sharded_images_roundtrip_in_site_seed_and_previous_deployment(tmp_path,
     pages_site.build_site(data, PASSWORD, site, seed_output=seed)
     compact = decrypt(json.loads((site / pages_site.PACKAGE_NAME).read_bytes()), PASSWORD)
     assert compact['media'] == {} and len(compact['media_packages']) == 1
+    assert compact['media_names'] == {'molecule.png': data['media']['molecule.png']['id']}
+    assert b'molecule.png' not in (site / pages_site.PACKAGE_NAME).read_bytes()
     chunk = compact['media_packages'][0]
     assert pages_site.MEDIA_FILE.fullmatch(chunk)
     assert pages_site.load_package(seed, PASSWORD) == data

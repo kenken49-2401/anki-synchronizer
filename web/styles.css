@@ -2596,7 +2596,7 @@ button.heat-cell:focus-visible {
     min-height: 44px;
   }
 }
-/* Note text remains source HTML until Anki renders it after synchronization. */
+/* Document-style editing; source HTML remains an optional advanced view. */
 .note-edit-status {
   display: flex;
   flex-wrap: wrap;
@@ -2649,6 +2649,127 @@ button.heat-cell:focus-visible {
   border-radius: 8px;
   max-height: 240px;
   overflow: auto;
+}
+.rich-note-field {
+  border: 1px solid #dcd9ed;
+  border-radius: 10px;
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+.rich-note-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 8px;
+  background: #f6f4fc;
+  border-bottom: 1px solid #e6e2f1;
+}
+.rich-note-toolbar button {
+  min-width: 36px;
+  min-height: 40px;
+  padding: 6px 9px;
+  background: white;
+  color: #49326b;
+  border: 1px solid #ddd7ed;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.rich-note-toolbar button:hover,
+.rich-note-toolbar button:focus-visible {
+  background: #eee7ff;
+  outline-color: #7957d6;
+}
+.rich-note-toolbar button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.note-edit-dialog .rich-note-color {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  font-size: 12px;
+}
+.rich-note-color input {
+  width: 32px;
+  height: 36px;
+  padding: 2px;
+  border: 0;
+}
+.rich-note-source-toggle {
+  margin-left: auto;
+}
+.rich-note-content {
+  min-height: 110px;
+  padding: 14px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+  font-size: 16px;
+  outline-color: #7957d6;
+  overflow-x: auto;
+}
+.rich-note-content pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.rich-note-content[contenteditable="true"]:focus {
+  outline: 2px solid #b29ae9;
+  outline-offset: -2px;
+}
+.rich-note-content p {
+  margin: 0 0 10px;
+}
+.rich-note-content ul,
+.rich-note-content ol {
+  padding-left: 26px;
+}
+.rich-note-content table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+.rich-note-content td,
+.rich-note-content th {
+  border: 1px solid #dcd9ed;
+  padding: 6px;
+}
+.rich-note-token {
+  display: inline-block;
+  max-width: 100%;
+  border-radius: 6px;
+  padding: 2px 6px;
+  background: #eee9fa;
+  color: #6240bf;
+  font-size: 13px;
+  vertical-align: middle;
+}
+.rich-note-image {
+  padding: 3px;
+  background: #f4f6fa;
+}
+.rich-note-image img {
+  display: block;
+  max-width: 100%;
+  max-height: 280px;
+  object-fit: contain;
+}
+.rich-note-image img:not([src]) {
+  display: none;
+}
+.rich-note-preview {
+  border: 1px solid #e6e2f1;
+  border-radius: 8px;
+  background: #faf9fe;
+  margin-bottom: 12px;
+}
+.rich-note-field > p:empty {
+  display: none;
+}
+.rich-note-field [hidden] {
+  display: none !important;
 }
 @media (max-width: 480px) {
   .note-edit-dialog {

@@ -14,7 +14,7 @@ export function noteRequest(encoded) {
 function encryptedRequest(encoded, title, marker) {
   if (typeof encoded !== "string" || encoded.length > 59000)
     throw new Error(
-      "変更が多すぎます。小分けに送信するか、変更ファイルをPCで取り込んでください。",
+      "送信できるサイズを超えています。ノートを小分けにするか、大きいノートはAnki本体で編集してください。",
     );
   const data = JSON.parse(encoded);
   const keys = [

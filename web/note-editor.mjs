@@ -1,4 +1,5 @@
 import { encryptData, decryptData, MAX_PACKAGE } from "./vault.mjs";
+import { createRichNoteField, richNotePreview } from "./rich-note-field.mjs";
 import {
   stageNoteEdit,
   notePayload,
@@ -18,6 +19,7 @@ const esc = (v) =>
 
 export function createNoteEditor({
   snapshot,
+  media,
   key,
   demo,
   tagPending,
@@ -229,25 +231,53 @@ export function createNoteEditor({
       dialog = document.createElement("dialog");
     dialog.id = "note-edit-dialog";
     dialog.className = "note-edit-dialog";
-    dialog.innerHTML = `<h2>カードの本文を編集</h2><p>同じノートから作られたカードにも反映されます。HTML・画像参照・穴埋めは元の記法で編集してください。画像の追加アップロードには対応していません。</p><form id="note-edit-form">${names.map((name, i) => `<label for="note-field-${i}">${esc(name)}</label><textarea id="note-field-${i}" data-field-index="${i}" rows="5" maxlength="128000" spellcheck="false"></textarea>`).join("")}<details class="note-edit-diff"><summary>保存する変更内容を確認</summary><div data-note-diff></div></details><p class="error" role="alert" data-note-error></p><p class="small muted">下書き保存だけではAnkiは変わりません。「本文をスマホから送信」→ GitHubでCreate issue → 毎時の同期 → スマホのAnkiで同期、の順に反映します。カードの表裏の表示は再取得後に更新されます。</p><div class="tag-sync-actions"><button type="submit" class="button primary">本文の下書きを保存</button><button type="button" class="button subtle" data-note-cancel>閉じる</button>${pending ? '<button type="button" class="text-button" data-note-discard>このノートの下書きを取り消す</button>' : ""}</div></form>`;
-    const inputs = [...dialog.querySelectorAll("textarea")];
-    inputs.forEach((el, i) => {
-      el.value = values[names[i]];
+    dialog.innerHTML = `<h2>カードの本文を編集</h2><p>同じノートから作られたカードにも反映されます。文字や画像を見ながら編集できます。太字・リスト・下付き／上付き文字は各フィールド上のボタンで変更できます。穴埋めの記号はそのまま残してください。</p><form id="note-edit-form">${names.map((name, i) => `<label for="note-field-${i}">${esc(name)}</label><div data-rich-field="${i}"></div>`).join("")}<details class="note-edit-diff"><summary>保存する変更内容を確認</summary><div data-note-diff></div></details><p class="error" role="alert" data-note-error></p><p class="small muted">下書き保存だけではAnkiは変わりません。「本文をスマホから送信」→ GitHubでCreate issue → 毎時の同期 → スマホのAnkiで同期、の順に反映します。カードの表裏の表示は再取得後に更新されます。</p><div class="tag-sync-actions"><button type="submit" class="button primary">本文の下書きを保存</button><button type="button" class="button subtle" data-note-cancel>閉じる</button>${pending ? '<button type="button" class="text-button" data-note-discard>このノートの下書きを取り消す</button>' : ""}</div></form>`;
+    const resolveImage = async (name) => {
+      const data = snapshot(),
+        id = data?.media?.[name]?.id || data?.media_names?.[name],
+        urls = media?.();
+      if (!id || !/^[a-f0-9]{64}$/.test(id) || !urls) return null;
+      return urls.get(id) || (await urls.loadImage?.(id));
+    };
+    const inputs = names.map((name, i) => {
+      const field = createRichNoteField({
+        value: values[name],
+        label: name,
+        id: `note-field-${i}`,
+        resolveImage,
+        onChange: () => diff(),
+      });
+      dialog.querySelector(`[data-rich-field="${i}"]`).append(field.element);
+      return field;
     });
-    const dirty = () => inputs.some((el, i) => el.value !== values[names[i]]);
+    const dirty = () =>
+      inputs.some((field, i) => field.getValue() !== values[names[i]]);
     dialog.dataset.dirty = "false";
     const diff = () => {
       dialog.dataset.dirty = String(dirty());
-      dialog.querySelector("[data-note-diff]").innerHTML =
-        inputs
-          .map((el, i) =>
-            el.value === card.editable_fields[names[i]]
-              ? ""
-              : `<h3>${esc(names[i])}</h3><p class="small muted">変更前</p><pre>${esc(card.editable_fields[names[i]])}</pre><p class="small muted">変更後</p><pre>${esc(el.value)}</pre>`,
-          )
-          .join("") || "<p>変更はありません。</p>";
+      const area = dialog.querySelector("[data-note-diff]");
+      area.replaceChildren();
+      if (!dialog.querySelector(".note-edit-diff").open) return;
+      inputs.forEach((field, i) => {
+        const value = field.getValue(),
+          original = card.editable_fields[names[i]];
+        if (value === original) return;
+        const title = document.createElement("h3");
+        title.textContent = names[i];
+        area.append(title);
+        for (const [label, html] of [
+          ["変更前", original],
+          ["変更後", value],
+        ]) {
+          const caption = document.createElement("p");
+          caption.className = "small muted";
+          caption.textContent = label;
+          area.append(caption, richNotePreview(html, { resolveImage }));
+        }
+      });
+      if (!area.childNodes.length) area.textContent = "変更はありません。";
     };
-    inputs.forEach((el) => el.addEventListener("input", diff));
+    dialog.querySelector(".note-edit-diff").addEventListener("toggle", diff);
     diff();
     const close = () => {
       if (state.busy) return;
@@ -287,7 +317,9 @@ export function createNoteEditor({
           current,
           state.changes,
           card.note_id,
-          Object.fromEntries(inputs.map((el, i) => [names[i], el.value])),
+          Object.fromEntries(
+            inputs.map((field, i) => [names[i], field.getValue()]),
+          ),
         );
         if (!demo() && currentKey !== key())
           throw new Error("ログイン状態が変わりました。");
