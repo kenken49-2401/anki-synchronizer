@@ -234,6 +234,7 @@ def export_snapshot(
                     "front": _text(card.get("question"), "カード表面"),
                     "back": _text(card.get("answer"), "カード裏面"),
                     "fields": _fields(note.get("fields")),
+                    "editable_fields": _fields(note.get("fields")),
                     "reps": _integer(card.get("reps"), "学習回数", minimum=0),
                     "lapses": _integer(card.get("lapses"), "忘却回数", minimum=0),
                     "interval": _integer(card.get("interval"), "学習間隔"),

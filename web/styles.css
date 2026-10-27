@@ -2596,3 +2596,62 @@ button.heat-cell:focus-visible {
     min-height: 44px;
   }
 }
+/* Note text remains source HTML until Anki renders it after synchronization. */
+.note-edit-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0;
+}
+.note-edit-dialog {
+  width: min(760px, calc(100vw - 32px));
+  max-height: calc(100dvh - 40px);
+  overflow: auto;
+  border: 1px solid var(--border, #e2e3ed);
+  border-radius: 16px;
+  padding: 24px;
+  color: #172846;
+  box-sizing: border-box;
+}
+.note-edit-dialog::backdrop {
+  background: #17284666;
+}
+.note-edit-dialog p {
+  line-height: 1.7;
+}
+.note-edit-dialog label {
+  display: block;
+  font-weight: 600;
+  margin: 16px 0 8px;
+  overflow-wrap: anywhere;
+}
+.note-edit-dialog textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 100px;
+  resize: vertical;
+  border: 1px solid #dcd9ed;
+  border-radius: 8px;
+  padding: 12px;
+  font: inherit;
+  font-size: 16px;
+}
+.note-edit-diff {
+  margin: 16px 0;
+}
+.note-edit-diff pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 10px;
+  background: #f3f5fa;
+  border-radius: 8px;
+  max-height: 240px;
+  overflow: auto;
+}
+@media (max-width: 480px) {
+  .note-edit-dialog {
+    padding: 16px;
+  }
+}

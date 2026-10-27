@@ -273,3 +273,22 @@ def test_scheduling_distributions_and_due_match_native_state_matrix(tmp_path, ki
             assert ('due_date' in snapshot['cards'][0]) is not seconds_due
     finally:
         col.close()
+
+
+def test_cli_restores_runtime_timezone_after_configuration_failure(monkeypatch):
+    if not hasattr(time, 'tzset'):
+        pytest.skip('POSIX local timezone setting')
+    original = os.environ.get('TZ')
+    monkeypatch.setenv('TZ', 'UTC')
+    time.tzset()
+    monkeypatch.delenv('DASHBOARD_URL', raising=False)
+    try:
+        assert cloud_sync.main(['--timezone', 'Asia/Tokyo']) == 1
+        assert os.environ['TZ'] == 'UTC'
+        assert time.localtime(0).tm_hour == 0
+    finally:
+        if original is None:
+            os.environ.pop('TZ', None)
+        else:
+            os.environ['TZ'] = original
+        time.tzset()

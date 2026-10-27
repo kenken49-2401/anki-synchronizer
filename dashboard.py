@@ -251,6 +251,14 @@ def validate_snapshot(value: Any) -> dict[str, Any]:
             "due": _integer(card.get("due", 0), "card.due", -MAX_ID),
             "suspended": suspended,
         })
+        if "editable_fields" in card:
+            editable = card["editable_fields"]
+            if not isinstance(editable, dict) or not 1 <= len(editable) <= 64 or set(editable) != set(fields):
+                raise SnapshotValidationError("invalid editable fields")
+            editable = {_text(k, "field name", 256): _text(v, "field value", 128_000) for k, v in editable.items()}
+            if note_fingerprint(model, editable) != safe_cards[-1]["tag_identity"]:
+                raise SnapshotValidationError("editable fields do not match the original note")
+            safe_cards[-1]["editable_fields"] = editable
         for field in ("queue", "type", "ease_factor", "added_at"):
             if field in card:
                 safe_cards[-1][field] = _integer(card[field], "card." + field, -MAX_ID)

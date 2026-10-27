@@ -16,7 +16,7 @@
 2. 自分のPCで以下の手順2を実行し、閲覧パスワードとAnkiWebトークンを作る。
 3. [Environments設定](https://github.com/kenken49-2401/anki-synchronizer/settings/environments)で `anki-sync` を作り、手順3のSecretsを登録する。
 4. [公開ワークフロー](https://github.com/kenken49-2401/anki-synchronizer/actions/workflows/ankiweb-refresh.yml)を `source=ankiweb` で手動実行し、公開画面を確認する。
-5. [Actions Variables](https://github.com/kenken49-2401/anki-synchronizer/settings/variables/actions)に `ANKI_AUTO_SYNC_ENABLED=true` を登録する。これで毎時のタグ確認も動きます。タグの書き戻しだけ止める場合は `ANKI_TAG_IMPORT_ENABLED=false` を追加します。
+5. [Actions Variables](https://github.com/kenken49-2401/anki-synchronizer/settings/variables/actions)に `ANKI_AUTO_SYNC_ENABLED=true` を登録する。これで毎時のタグ・本文変更の確認も動きます。Ankiへの書き戻しを止める場合は `ANKI_TAG_IMPORT_ENABLED=false` を追加します。
 
 クラウド環境のGitHub連携ではSecrets・Variablesの確認と設定APIが403で拒否されました。コード変更と自動テストは行えますが、認証情報の登録と `ANKI_AUTO_SYNC_ENABLED=true` の設定はGitHub画面で行ってください。秘密の値をチャットへ送る必要はありません。
 
@@ -82,7 +82,7 @@ PCのAnkiConnectから作った `pages-data/snapshot.enc.json` を使う場合�
 | Variable名 | 値 |
 | --- | --- |
 | `ANKI_AUTO_SYNC_ENABLED` | 小文字の **`true`**。毎時の公開・確認処理を有効化 |
-| `ANKI_TAG_IMPORT_ENABLED` | 任意。省略時は **`true`** として本人送信のタグを確認。**`false`** で書き戻し停止 |
+| `ANKI_TAG_IMPORT_ENABLED` | 任意。省略時は **`true`** として本人送信のタグ・本文変更を確認。**`false`** で両方の書き戻し停止 |
 | `ANKI_TIMEZONE` | 任意。日本なら `Asia/Tokyo`。省略時も同じ |
 
 未設定・falseでは定期実行をスキップします。手動実行はこの変数に関係なく、明示的な操作として実行できます。デフォルトブランチへ暗号化シードをpushした場合も、有効化済みならAnkiWeb更新が動きます。
@@ -111,6 +111,18 @@ GitHubのIssueは暗号化された変更の受け付けに使います。平文
 - **要確認**：暗号文やノート照合に問題があるとIssueのタイトルが `Tag update needs attention` に変わり、自動再試行の対象から外れます。最新データでタグを付け直し、新しいIssueを送ってください。
 - **一時障害**：通信失敗や同期結果が不明な場合はIssueを保留し、次回に再試行します。反映済みのタグは重複追加しません。Pages公開だけが失敗した場合、AnkiWebへの反映が先に完了している場合があります。IssueとスマホAnkiの同期で確認してください。
 - **停止**：`ANKI_TAG_IMPORT_ENABLED=false` で書き戻しだけを停止できます。公開更新全体は `ANKI_AUTO_SYNC_ENABLED=false` で停止します。
+
+## カード本文の編集をスマホから反映する
+
+タグと同じSecrets・毎時ワークフローを利用するため、追加のパスワードやトークンの登録は不要です。`ANKI_TAG_IMPORT_ENABLED=false` の場合は本文の書き戻しも停止します。
+
+アプリの **本文を編集 → 本文の下書きを保存 → 本文をスマホから送信 → GitHubでCreate issue** の順で確定します。対象は所有者本人の `[Anki Atlas] Encrypted note update` です。本文は暗号化され、平文のフィールドはIssueやログへ出しません。
+
+ワークフローは元の全フィールド・ノートタイプ・カードIDを確認し、変更がなければ指定フィールドだけを更新して通常同期します。独立した再ダウンロードで反映を確認してからIssueを閉じます。元の本文が変わっていれば上書きせず、`Note update needs attention` にして自動処理を止めます。通信失敗などの未確定時は保留し、同じ内容の再実行では反映済みの変更を重複して書きません。
+
+送信前と反映後にスマホのAnkiで同期し、処理中は同じノートを別端末から編集しないでください。タグ追加と本文編集を同じノートへ行う場合は、片方の反映を確認してから次を送信します。`source=seed` では本文も書き戻しません。
+
+詳しい編集方法・下書き復旧は [DASHBOARD.md](DASHBOARD.md#カード本文を編集してankiへ戻す) を参照してください。
 
 ## 変更・停止・復旧
 

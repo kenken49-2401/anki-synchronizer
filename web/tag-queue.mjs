@@ -2,8 +2,16 @@
 export const TAG_REPOSITORY = "kenken49-2401/anki-synchronizer";
 export const TAG_TITLE = "[Anki Atlas] Encrypted tag update";
 export const TAG_MARKER = "<!-- anki-atlas-tag-request:v1 -->";
+export const NOTE_TITLE = "[Anki Atlas] Encrypted note update";
+export const NOTE_MARKER = "<!-- anki-atlas-note-request:v1 -->";
 
 export function tagRequest(encoded) {
+  return encryptedRequest(encoded, TAG_TITLE, TAG_MARKER);
+}
+export function noteRequest(encoded) {
+  return encryptedRequest(encoded, NOTE_TITLE, NOTE_MARKER);
+}
+function encryptedRequest(encoded, title, marker) {
   if (typeof encoded !== "string" || encoded.length > 59000)
     throw new Error(
       "変更が多すぎます。小分けに送信するか、変更ファイルをPCで取り込んでください。",
@@ -33,18 +41,16 @@ export function tagRequest(encoded) {
     !/^[A-Za-z0-9+/]+={0,2}$/.test(data.ciphertext)
   )
     throw new Error("暗号化した下書きだけを送信できます。");
-  const body = `${TAG_MARKER}\n\`\`\`json\n${JSON.stringify(data)}\n\`\`\``;
+  const body = `${marker}\n\`\`\`json\n${JSON.stringify(data)}\n\`\`\``;
   const base = `https://github.com/${TAG_REPOSITORY}/issues/new`;
-  const params = new URLSearchParams({ title: TAG_TITLE, body });
+  const params = new URLSearchParams({ title, body });
   const full = `${base}?${params}`;
   // Large requests are copied into GitHub's form, avoiding URL size limits.
   return {
     body,
     prefilled: full.length <= 7000,
     url:
-      full.length <= 7000
-        ? full
-        : `${base}?${new URLSearchParams({ title: TAG_TITLE })}`,
+      full.length <= 7000 ? full : `${base}?${new URLSearchParams({ title })}`,
   };
 }
 

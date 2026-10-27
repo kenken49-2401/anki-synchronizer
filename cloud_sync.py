@@ -109,6 +109,7 @@ def _extract_snapshot(col: Collection, *, timezone: str, query: str, allow_empty
                 "tags": sorted(set(note.tags)),
                 "front": rendered.question_text, "back": rendered.answer_text,
                 "fields": dict(note.items()),
+                "editable_fields": dict(note.items()),
                 "reps": _int(card.reps, minimum=0),
                 "lapses": _int(card.lapses, minimum=0),
                 "interval": _int(card.ivl), "due": _int(card.due),
@@ -251,13 +252,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--query", default="", help="Anki search query (default: all cards)")
     parser.add_argument("--allow-empty", action="store_true", help="Deliberately permit replacing the dashboard with zero cards")
     args = parser.parse_args(argv)
+    import time
+    original_timezone = os.environ.get("TZ")
+    timezone_changed = False
     try:
         # This is a dedicated CLI process. Align Anki's Rust/local scheduler with
         # the requested IANA timezone before creating a collection/backend.
         ZoneInfo(args.timezone)
-        import time
         if hasattr(time, "tzset"):
             os.environ["TZ"] = args.timezone
+            timezone_changed = True
             time.tzset()
         server = os.environ.get("DASHBOARD_URL", "")
         token = os.environ.get("ANKI_UPLOAD_TOKEN", "")
@@ -281,6 +285,13 @@ def main(argv: list[str] | None = None) -> int:
     except Exception:
         print("Cloud sync failed; credentials and card data were not logged.", file=sys.stderr)
         return 1
+    finally:
+        if timezone_changed:
+            if original_timezone is None:
+                os.environ.pop("TZ", None)
+            else:
+                os.environ["TZ"] = original_timezone
+            time.tzset()
 
 
 if __name__ == "__main__":

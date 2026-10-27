@@ -1,4 +1,4 @@
-"""Apply owner-approved tag additions with Anki's incremental sync protocol.
+"""Apply owner-approved tags or dispatch note edits with incremental sync.
 
 Every run starts from AnkiWeb. Full uploads, media sync, deletion and card
 answers are never used. The read-only Pages exporter remains independent.
@@ -95,6 +95,9 @@ def apply_cloud_changes(package, hkey, endpoint=None, *, _test_endpoint=None):
     A phone should sync before submitting and avoid editing the same note during
     this operation. Anki's normal conflict resolution applies to concurrent edits.
     """
+    if isinstance(package, dict) and package.get('format') == 'anki-atlas-note-changes':
+        from note_edits import apply_cloud_note_changes
+        return apply_cloud_note_changes(package, hkey, endpoint, _test_endpoint=_test_endpoint)
     validate_changes(package)
     if not isinstance(hkey, str) or not hkey or len(hkey) > 4096 or any(not 33 <= ord(c) <= 126 for c in hkey):
         raise CloudTagError("Set a valid AnkiWeb sync token.")

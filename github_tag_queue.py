@@ -1,4 +1,4 @@
-"""Consume encrypted tag requests authored by the repository's user owner.
+"""Consume encrypted tag and note requests authored by the repository's owner.
 
 The browser sends no API token. The owner confirms an encrypted issue in GitHub;
 the scheduled job uses its short-lived GITHUB_TOKEN only against this repository.
@@ -15,10 +15,14 @@ import httpx
 from cloud_tags import apply_cloud_changes, CloudTagError, TagConflict
 from pages_crypto import decrypt, PackageError, password_bytes
 from tag_import import validate_changes, TagImportError
+from note_edits import validate_note_changes, NoteEditError
 
 TITLE = '[Anki Atlas] Encrypted tag update'
 ATTENTION_TITLE = '[Anki Atlas] Tag update needs attention'
 MARKER = '<!-- anki-atlas-tag-request:v1 -->'
+NOTE_TITLE = '[Anki Atlas] Encrypted note update'
+NOTE_MARKER = '<!-- anki-atlas-note-request:v1 -->'
+NOTE_ATTENTION_TITLE = '[Anki Atlas] Note update needs attention'
 MAX_BODY = 60000
 MAX_REQUESTS = 5
 
@@ -30,12 +34,14 @@ class QueueError(ValueError):
 def parse_body(body, password):
     if not isinstance(body, str) or len(body.encode('utf-8')) > MAX_BODY:
         raise QueueError('Invalid encrypted request.')
-    match = re.fullmatch(re.escape(MARKER) + r'\n```json\n([^\n]+)\n```\s*', body)
+    marker = NOTE_MARKER if body.startswith(NOTE_MARKER) else MARKER
+    match = re.fullmatch(re.escape(marker) + r'\n```json\n([^\n]+)\n```\s*', body)
     if not match:
         raise QueueError('Invalid encrypted request.')
     try:
-        return validate_changes(decrypt(json.loads(match[1]), password))
-    except (PackageError, TagImportError, ValueError, RecursionError):
+        validator = validate_note_changes if marker == NOTE_MARKER else validate_changes
+        return validator(decrypt(json.loads(match[1]), password))
+    except (PackageError, TagImportError, NoteEditError, ValueError, RecursionError):
         raise QueueError('Invalid encrypted request.') from None
 
 
@@ -82,7 +88,7 @@ class GitHubQueue:
 
     def approved(self, issue):
         return (isinstance(issue, dict) and 'pull_request' not in issue
-                and issue.get('state') == 'open' and issue.get('title') == TITLE
+                and issue.get('state') == 'open' and issue.get('title') in (TITLE, NOTE_TITLE)
                 and issue.get('user', {}).get('id') == self.owner['id']
                 and type(issue.get('number')) is int and issue['number'] > 0)
 
@@ -104,7 +110,7 @@ class GitHubQueue:
 
     def current(self, issue):
         latest = self.request('GET', f"/issues/{issue['number']}")
-        if not self.approved(latest) or latest.get('number') != issue.get('number') or latest.get('body') != issue.get('body'):
+        if not self.approved(latest) or latest.get('number') != issue.get('number') or latest.get('body') != issue.get('body') or latest.get('title') != issue.get('title'):
             return None
         return latest
 
@@ -114,16 +120,16 @@ class GitHubQueue:
             return
         number = issue['number']
         self.request('POST', f'/issues/{number}/comments', json={'body':
-            'タグのAnkiWebへの反映を確認しました。スマホのAnkiで同期してください。Pagesの更新はこの実行の後続処理です。'})
+            '変更のAnkiWebへの反映を確認しました。スマホのAnkiで同期してください。Pagesの更新はこの実行の後続処理です。'})
         self.request('PATCH', f'/issues/{number}', json={'state': 'closed', 'state_reason': 'completed'})
 
     def reject(self, issue):
         if self.current(issue) is None:
             return
         number = issue['number']
-        self.request('PATCH', f'/issues/{number}', json={'title': ATTENTION_TITLE})
+        self.request('PATCH', f'/issues/{number}', json={'title': NOTE_ATTENTION_TITLE if issue['title'] == NOTE_TITLE else ATTENTION_TITLE})
         self.request('POST', f'/issues/{number}/comments', json={'body':
-            '反映を確認できません。閲覧パスワード・送信データ・対象ノートを確認し、最新のPagesでタグを付け直して新しく送信してください。一部がすでに反映されている場合もあります。このリクエストは自動再試行しません。'})
+            '反映を確認できません。閲覧パスワード・送信データ・対象ノートを確認し、最新のPagesで変更を作り直して新しく送信してください。一部がすでに反映されている場合もあります。このリクエストは自動再試行しません。'})
 
 
 def process_queue(queue, password, hkey, endpoint=None):
@@ -136,6 +142,8 @@ def process_queue(queue, password, hkey, endpoint=None):
             continue
         try:
             package = parse_body(issue.get('body'), password)
+            if (issue['title'] == NOTE_TITLE) != (package['format'] == 'anki-atlas-note-changes'):
+                raise QueueError('Request type does not match its title.')
         except QueueError:
             queue.reject(issue)
             result['rejected'] += 1
@@ -156,7 +164,7 @@ def process_queue(queue, password, hkey, endpoint=None):
 
 def main():
     if os.environ.get('ANKI_TAG_IMPORT_ENABLED') != 'true':
-        print('Cloud tag import is disabled; no queue or AnkiWeb changes were accessed.')
+        print('Cloud change import is disabled; no queue or AnkiWeb changes were accessed.')
         return 0
     try:
         password = os.environ.get('PAGES_PASSWORD', '')
@@ -167,7 +175,7 @@ def main():
         print(json.dumps(result, sort_keys=True))
         return 0
     except Exception:
-        print('Cloud tag queue failed; pending requests will be retried. Check configuration, Anki sync and job permissions. Private diagnostics were not logged.', file=sys.stderr)
+        print('Cloud change queue failed; pending requests will be retried. Check configuration, Anki sync and job permissions. Private diagnostics were not logged.', file=sys.stderr)
         return 1
 
 

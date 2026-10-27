@@ -20,8 +20,15 @@ import {
   forgetDevice,
 } from "./device-session.mjs";
 import { renderAnkiInsights, bindAnkiInsights } from "./anki-insights.mjs";
+import { createNoteEditor } from "./note-editor.mjs";
+import { noteFingerprint } from "./note-edits.mjs";
 import { watchUpdates } from "./updates.mjs";
-import { tagRequest, unconfirmedTags, TAG_REPOSITORY } from "./tag-queue.mjs";
+import {
+  tagRequest,
+  noteRequest,
+  unconfirmedTags,
+  TAG_REPOSITORY,
+} from "./tag-queue.mjs";
 import {
   summarize,
   filterCards,
@@ -113,7 +120,23 @@ try {
   state.timezone = "Asia/Tokyo";
 }
 
-function demoSnapshot() {
+const noteEditor = createNoteEditor({
+  snapshot: () => state.baseSnapshot,
+  key: () => state.masterKey,
+  demo: () => state.demo,
+  tagPending: (id) => state.tagChanges.has(id),
+  onChange: () => {
+    if (state.baseSnapshot) {
+      const y = scrollY;
+      shell();
+      window.scrollTo(0, y);
+    }
+  },
+  notify: toast,
+  send: () => openTagQueue("notes"),
+});
+
+async function demoSnapshot() {
   const seed = [
     [
       "生理学::循環",
@@ -256,6 +279,12 @@ function demoSnapshot() {
       c.reps++;
     }
   }
+  await Promise.all(
+    cards.map(async (c) => {
+      c.editable_fields = { ...c.fields };
+      c.tag_identity = await noteFingerprint(c.model, c.editable_fields);
+    }),
+  );
   return {
     schema_version: 1,
     source: {
@@ -369,27 +398,38 @@ async function reconcileTagDraft(snapshot) {
   }
 }
 
-function openTagQueue() {
+function openTagQueue(kind) {
+  const notes = kind === "notes";
   if (state.demo) {
     toast("デモの変更は送信できません。");
     return;
   }
-  if (state.tagBusy || state.busy || !state.tagChanges.size) return;
+  if (
+    state.tagBusy ||
+    state.busy ||
+    noteEditor.busy ||
+    (!notes && !state.tagChanges.size)
+  )
+    return;
   try {
+    const noteEncoded = notes ? noteEditor.sendable() : null;
     if (
-      state.tagRecoveryError ||
-      state.tagStorageError ||
-      !state.tagStoredVersion ||
-      localStorage.getItem("atlas-tag-draft") !== state.tagStoredVersion
+      !notes &&
+      (state.tagRecoveryError ||
+        state.tagStorageError ||
+        !state.tagStoredVersion ||
+        localStorage.getItem("atlas-tag-draft") !== state.tagStoredVersion)
     )
       throw new Error(
         "下書きの保存状態を確認してください。別のタブで変更した場合は、必要なファイルを保存して読み直してください。",
       );
-    const request = tagRequest(state.tagStoredVersion);
+    const request = notes
+      ? noteRequest(noteEncoded)
+      : tagRequest(state.tagStoredVersion);
     $("#tag-queue-dialog")?.remove();
     const dialog = document.createElement("dialog");
     dialog.id = "tag-queue-dialog";
-    dialog.innerHTML = `<h2>スマホからAnkiへタグを送る</h2><p>先にスマホのAnkiで同期してください。同じノートを同時に編集しないでください。</p><ol><li>${request.prefilled ? "次のボタンでGitHubを開きます。暗号化データは入力済みです。" : "「暗号化データをコピー」を押し、GitHubを開いたら本文へ貼り付けます。"}</li><li>自分のGitHubアカウントで <strong>Create issue</strong> を押すと送信が確定します。</li><li>毎時のActionsが反映を確認するとリクエストを閉じます。その後スマホのAnkiで同期してください。</li></ol><p class="small muted">送信先：${esc(TAG_REPOSITORY)}。初回は自動更新の有効化が必要です。端末の下書きを消しても送信済みリクエストは取り消されません。</p>${!request.prefilled ? '<label for="tag-request-body">暗号化データ（本文へ貼り付け）</label><textarea id="tag-request-body" readonly></textarea><button class="button subtle" id="copy-tag-request">暗号化データをコピー</button>' : ""}<div class="tag-sync-actions"><a class="button primary" href="${esc(request.url)}" target="_blank" rel="noopener noreferrer">GitHubで送信を確定</a><form method="dialog"><button class="button subtle">閉じる</button></form></div><p class="small muted">GitHubに送るのは暗号文です。パスワードは送信しません。送信前・処理前ならリクエストを閉じて取り消せます。</p>`;
+    dialog.innerHTML = `<h2>${notes ? "スマホからAnkiへ本文変更を送る" : "スマホからAnkiへタグを送る"}</h2><p>先にスマホのAnkiで同期してください。同じノートを同時に編集しないでください。</p><ol><li>${request.prefilled ? "次のボタンでGitHubを開きます。暗号化データは入力済みです。" : "「暗号化データをコピー」を押し、GitHubを開いたら本文へ貼り付けます。"}</li><li>自分のGitHubアカウントで <strong>Create issue</strong> を押すと送信が確定します。</li><li>毎時のActionsが反映を確認するとリクエストを閉じます。その後スマホのAnkiで同期してください。</li></ol><p class="small muted">送信先：${esc(TAG_REPOSITORY)}。初回は自動更新の有効化が必要です。端末の下書きを消しても送信済みリクエストは取り消されません。</p>${!request.prefilled ? '<label for="tag-request-body">暗号化データ（本文へ貼り付け）</label><textarea id="tag-request-body" readonly></textarea><button class="button subtle" id="copy-tag-request">暗号化データをコピー</button>' : ""}<div class="tag-sync-actions"><a class="button primary" href="${esc(request.url)}" target="_blank" rel="noopener noreferrer">GitHubで送信を確定</a><form method="dialog"><button class="button subtle">閉じる</button></form></div><p class="small muted">GitHubに送るのは暗号文です。パスワードは送信しません。送信前・処理前ならリクエストを閉じて取り消せます。</p>`;
     document.body.append(dialog);
     if (!request.prefilled) {
       dialog.querySelector("textarea").value = request.body;
@@ -523,6 +563,7 @@ function login(message = "") {
       state.mediaURLs = urls;
       state.masterKey = key;
       await restoreTagDraft(snapshot);
+      await noteEditor.restore(snapshot);
       setSnapshot(snapshot);
       let deviceMessage = "";
       try {
@@ -560,6 +601,10 @@ function shell() {
   });
   document.querySelectorAll("#logout, #header-logout").forEach((el) =>
     el.addEventListener("click", async () => {
+      if (noteEditor.unsafe) {
+        toast("本文の編集内容を保存してからログアウトしてください。");
+        return;
+      }
       if (!state.demo) {
         if (state.deviceRemembered) {
           try {
@@ -578,6 +623,7 @@ function shell() {
         state.stats = null;
         state.expanded.clear();
         state.tagChanges.clear();
+        noteEditor.reset();
         state.baseSnapshot = null;
       }
       location.assign(location.pathname);
@@ -846,6 +892,7 @@ function cardsView() {
         "Markdownで保存</button>",
     ) +
     tagSyncPanel() +
+    noteEditor.panel() +
     `
   <div class="card-workspace"><aside class="tag-sidebar"><div class="tag-sidebar-heading">タグ一覧<span>${stats.tags.length}</span></div><button class="tag-filter ${!state.tag ? "selected" : ""}" data-tag="">${icon("cards", 17)}<span>すべてのカード</span><small>${stats.cards}</small></button>${stats.tags.map((g, i) => `<button class="tag-filter ${state.tag === g.tag ? "selected" : ""}" data-tag="${esc(g.tag)}"><span class="tag-bullet tag-color-${i % 4}">#</span><span title="${esc(g.tag)}">${esc(g.tag.replaceAll("::", " / "))}</span><small>${g.count}</small></button>`).join("")}</aside>
   <section class="cards-main"><div class="card-toolbar"><label class="search-input">${icon("search", 18)}<input id="search" type="search" placeholder="質問・答え・タグを検索" aria-label="カードを検索" value="${esc(state.query)}"></label>
@@ -862,7 +909,7 @@ function selectedCards() {
 function renderStudyCard(c, index) {
   const s = state.stats.byCard.get(c.id);
   const accuracy = s?.count ? Math.round((s.correct / s.count) * 100) : null;
-  return `<article class="study-card"><div class="study-card-main"><span class="card-index">${String(index).padStart(2, "0")}</span><div class="card-content"><div class="card-meta"><span>${esc(c.deck)}</span><span>·</span><span>${esc(c.model)}</span>${c.suspended ? '<span class="suspended">休止中</span>' : ""}</div><div class="card-question rich-card">${cardHTML(c, "front")}</div><div class="card-tags">${c.tags.map((t) => `<button data-tag="${esc(t)}"># ${esc(t.replaceAll("::", " / "))}</button>`).join("")}</div></div><div class="card-accuracy"><strong class="${accuracy === null ? "muted" : accuracy < 70 ? "needs-practice" : ""}">${accuracy === null ? "—" : accuracy + "%"}</strong><span>${s?.count || 0} 回回答</span><span>累計 ${minutes(s?.time || 0)} 分</span></div></div>${tagEditor(c)}<button class="answer-toggle" data-answer="${c.id}" aria-expanded="${state.expanded.has(c.id)}" aria-controls="answer-${c.id}">${state.expanded.has(c.id) ? "答えを隠す" : "答えを見る"}${icon("chevron", 13)}</button><div class="answer-content" id="answer-${c.id}" ${state.expanded.has(c.id) ? "" : "hidden"}><span>ANSWER</span><div class="rich-card">${cardHTML(c, "back")}</div>${
+  return `<article class="study-card"><div class="study-card-main"><span class="card-index">${String(index).padStart(2, "0")}</span><div class="card-content"><div class="card-meta"><span>${esc(c.deck)}</span><span>·</span><span>${esc(c.model)}</span>${c.suspended ? '<span class="suspended">休止中</span>' : ""}</div><div class="card-question rich-card">${cardHTML(c, "front")}</div><div class="card-tags">${c.tags.map((t) => `<button data-tag="${esc(t)}"># ${esc(t.replaceAll("::", " / "))}</button>`).join("")}</div></div><div class="card-accuracy"><strong class="${accuracy === null ? "muted" : accuracy < 70 ? "needs-practice" : ""}">${accuracy === null ? "—" : accuracy + "%"}</strong><span>${s?.count || 0} 回回答</span><span>累計 ${minutes(s?.time || 0)} 分</span></div></div>${noteEditor.button(c)}${tagEditor(c)}<button class="answer-toggle" data-answer="${c.id}" aria-expanded="${state.expanded.has(c.id)}" aria-controls="answer-${c.id}">${state.expanded.has(c.id) ? "答えを隠す" : "答えを見る"}${icon("chevron", 13)}</button><div class="answer-content" id="answer-${c.id}" ${state.expanded.has(c.id) ? "" : "hidden"}><span>ANSWER</span><div class="rich-card">${cardHTML(c, "back")}</div>${
     Object.entries(c.fields || {}).length > 2
       ? `<details><summary>すべてのフィールド</summary>${Object.entries(
           c.fields,
@@ -938,6 +985,7 @@ function settings() {
       "データはGitHub Pagesで暗号化配信され、このブラウザー内で復号されます。",
     ) +
     tagSyncPanel(true) +
+    noteEditor.panel() +
     `
   <div class="settings-grid"><section class="panel"><div class="panel-title"><div><h2>接続の状態</h2><p>閲覧パスワードはブラウザーの外へ送りません。</p></div><span class="pill connected">${state.demo ? "デモ" : "復号済み"}</span></div>
   <dl class="connection-info"><div><dt>プロフィール</dt><dd>${esc(state.snapshot?.source.profile || "未設定")}</dd></div><div><dt>最終データ受信</dt><dd>${esc(syncLabel())}</dd></div><div><dt>接続方式</dt><dd>AnkiWeb / AnkiConnect → 暗号化Pages</dd></div></dl>
@@ -1141,7 +1189,13 @@ function bindCards() {
   document.querySelectorAll("[data-note-tags]").forEach((form) =>
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
-      if (state.tagBusy || state.busy) return;
+      if (state.tagBusy || state.busy || noteEditor.busy) return;
+      if (noteEditor.has(Number(form.dataset.noteTags))) {
+        toast(
+          "このノートは本文変更が未反映です。本文の反映を確認してからタグを追加してください。",
+        );
+        return;
+      }
       if (state.tagRecoveryError) {
         toast("以前の下書きを保存して取り消してから、タグを追加してください。");
         return;
@@ -1220,6 +1274,10 @@ function exportCards() {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 async function refresh(notify = false) {
+  if (noteEditor.busy || noteEditor.editing) {
+    toast("本文の編集を閉じてから更新してください。");
+    return;
+  }
   if (state.busy) return;
   if (state.tagBusy) {
     toast("タグの保存が終わってから更新してください。");
@@ -1228,7 +1286,7 @@ async function refresh(notify = false) {
   state.busy = true;
   try {
     const snapshot = state.demo
-      ? demoSnapshot()
+      ? await demoSnapshot()
       : await decryptPackage(await fetchPackage(), state.masterKey);
     if (
       state.tagChanges.size &&
@@ -1239,6 +1297,8 @@ async function refresh(notify = false) {
       throw new Error(
         "公開データのプロフィールが変わりました。タグ変更を保存して取り消してから更新してください。",
       );
+    noteEditor.checkSource(snapshot);
+    await noteEditor.reconcile(snapshot);
     withTagChanges(snapshot, state.tagChanges);
     const urls = state.demo
       ? new Map()
@@ -1278,6 +1338,7 @@ else {
       state.masterKey = key;
       state.mediaURLs = urls;
       await restoreTagDraft(snapshot);
+      await noteEditor.restore(snapshot);
       setSnapshot(snapshot);
       shell();
     }
@@ -1298,6 +1359,7 @@ watchUpdates({
   safe: () =>
     !state.busy &&
     !state.tagBusy &&
+    !noteEditor.unsafe &&
     !(state.tagStorageError && state.tagChanges.size) &&
     !document.querySelector("dialog[open]") &&
     !$("#password")?.value &&
@@ -1322,11 +1384,16 @@ window.addEventListener("pagehide", () => {
   state.stats = null;
   state.expanded.clear();
   state.tagChanges.clear();
+  noteEditor.reset();
   state.baseSnapshot = null;
   $("#app").replaceChildren();
 });
 window.addEventListener("beforeunload", (event) => {
-  if (state.tagBusy || (state.tagStorageError && state.tagChanges.size)) {
+  if (
+    state.tagBusy ||
+    (state.tagStorageError && state.tagChanges.size) ||
+    noteEditor.unsafe
+  ) {
     event.preventDefault();
     event.returnValue = "";
   }

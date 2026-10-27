@@ -24,6 +24,7 @@ name: Publish encrypted Anki Pages
       - "dashboard.py"
       - "card_media.py"
       - "note_identity.py"
+      - "note_edits.py"
       - "cloud_sync.py"
       - "anki_media.py"
       - "cloud_tags.py"
@@ -62,7 +63,7 @@ jobs:
         with:
           python-version: 3.12.14
           enable-cache: true
-      - name: Import owner-approved encrypted tag requests into AnkiWeb
+      - name: Import owner-approved encrypted tag and note requests into AnkiWeb
         if: vars.ANKI_TAG_IMPORT_ENABLED != 'false' && inputs.source != 'seed'
         env:
           GITHUB_TOKEN: ${{ github.token }}

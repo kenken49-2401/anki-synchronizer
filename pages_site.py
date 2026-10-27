@@ -29,6 +29,7 @@ ROOT = Path(__file__).resolve().parent
 PACKAGE_NAME = "snapshot.enc.json"
 ASSETS = {"index.html", "app.js", "styles.css", "stats.mjs", "vault.mjs", "tags.mjs", "tag-queue.mjs", "updates.mjs",
           "device-session.mjs", "anki-insights.mjs", "anki-insights.css",
+          "note-edits.mjs", "note-editor.mjs",
           "manifest.webmanifest", "icon-180.png", "icon-192.png", "icon-512.png"}
 BUILD_FILE = "release.json"
 MEDIA_FILE = re.compile(r"media-[a-f0-9]{64}\.enc\.json")
