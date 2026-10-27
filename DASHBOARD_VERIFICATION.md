@@ -90,3 +90,5 @@ iOS実機の「ホーム画面に追加」とWindows実機でのcmd起動は利�
 - CSPはインラインの書式属性のみ許可し、スクリプト・外部通信・埋め込みの制限を維持。実ブラウザーのJavaScript／CSPエラーと意図しない外部要求なし。
 - 手動ブラウザー回帰テストは `python tests/browser_rich_notes.py`。PlaywrightとChromiumが必要で、必要なら `CHROMIUM_PATH` で実行ファイルを指定します。合成した暗号化カードだけで検証し、実アカウントへ書き込みません。
 - 文書エディター形式の色・太字・改行・リスト・上下付き・穴埋め・ノーブレークスペースが、公式ローカルAnki同期サーバーへの差分同期でも維持されることを確認しました。
+
+- 文書形式版の[Windows・Linuxチェック](https://github.com/kenken49-2401/anki-synchronizer/actions/runs/40450844009)が成功。[暗号化データを再利用した公開](https://github.com/kenken49-2401/anki-synchronizer/actions/runs/40451245219)も成功しました（ビルド58秒、配信24秒）。AnkiWebへの書き戻しはこの画面再公開では行っていません。
