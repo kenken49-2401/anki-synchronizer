@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://accounts.google.com; connect-src 'self' https://sheets.googleapis.com https://accounts.google.com; frame-src https://accounts.google.com; style-src 'self' https://accounts.google.com; style-src-attr 'unsafe-inline'; img-src 'self' data: https://accounts.google.com; object-src 'none'; base-uri 'none'; form-action 'self'">
+  <title>Study Atlas · 学習管理</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script type="module" src="app.mjs"></script>
+</head>
+<body>
+  <div class="layout">
+    <aside><a class="brand" href="#overview"><span>A</span><div>Study <b>Atlas</b><small>学びを、ひとつの景色に。</small></div></a>
+      <div class="nav-title">WORKSPACE</div><nav><a href="#overview">◫　ダッシュボード</a><a href="#exams">▤　模試の記録</a><a href="#time">◷　勉強時間</a><a href="#topics">⌁　分野の分析</a><a href="#settings">⚙　接続・設定</a></nav>
+      <div class="aside-note">✦<br><b>今日の積み重ねが、<br>未来の自信になる。</b></div>
+    </aside>
+    <main><header><span>学習ワークスペース / <b id="breadcrumb">ダッシュボード</b></span><span id="connection" class="badge">未接続</span></header>
+      <div class="content"><div id="app" aria-live="polite"></div><footer>Study Atlas · プロトタイプ</footer></div>
+    </main>
+  </div><div id="toast" role="status"></div>
+</body></html>
