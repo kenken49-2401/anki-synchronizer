@@ -2314,6 +2314,19 @@ input::placeholder {
   max-width: 520px;
   margin-top: 22px;
 }
+#review-token-form {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0;
+}
+#review-token {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid #d7e3ed;
+  border-radius: 8px;
+}
+#review-token-form .button { justify-self: start; }
 .review-rating {
   min-height: 42px;
   padding: 8px 6px;

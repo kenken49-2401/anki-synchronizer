@@ -23,10 +23,10 @@ import { renderAnkiInsights, bindAnkiInsights } from "./anki-insights.mjs";
 import { createNoteEditor } from "./note-editor.mjs";
 import { noteFingerprint } from "./note-edits.mjs";
 import { watchUpdates } from "./updates.mjs";
+import { clearReviewGuards, configureReviewToken, removeReviewToken, submitAutomaticReview } from "./review-auto.mjs";
 import {
   tagRequest,
   noteRequest,
-  reviewRequest,
   unconfirmedTags,
   TAG_REPOSITORY,
 } from "./tag-queue.mjs";
@@ -461,25 +461,13 @@ async function submitReview(cardId, rating) {
     toast("最新のAnkiWebデータが必要です。更新して読み直してください。");
     return;
   }
-  const destination = window.open("about:blank", "_blank");
-  if (!destination) {
-    toast("GitHubを開けませんでした。ポップアップを許可してからもう一度お試しください。");
-    return;
-  }
-  destination.opener = null;
   state.busy = true;
   try {
     const labels = {again: "不正解", hard: "難しい", good: "正解", easy: "簡単"};
     if (!Object.hasOwn(labels, rating)) throw new Error("評価が正しくありません。");
-    const key = state.masterKey;
-    const encrypted = await encryptData({format: "anki-atlas-review", version: 1,
-      request_id: crypto.randomUUID(), card_id: cardId, review_version: card.review_version, rating}, key);
-    if (key !== state.masterKey) throw new Error("ログイン状態が変わりました。読み直してください。");
-    const request = reviewRequest(JSON.stringify(encrypted));
-    if (!request.prefilled) throw new Error("回答が大きすぎるため送信できません。");
-    destination.location.replace(request.url);
-    toast("GitHubで Create issue を押すと送信されます。");
-  } catch (err) { destination.close(); toast(err.message || "回答を準備できませんでした。"); }
+    await submitAutomaticReview(state.masterKey, card, rating);
+    toast("回答を送信しました。定時更新でAnkiへの反映を確認します。");
+  } catch (err) { toast(err.message || "回答を送信できませんでした。"); }
   finally { state.busy = false; }
 }
 
@@ -950,7 +938,7 @@ function renderStudyCard(c, index) {
           )
           .join("")}</details>`
       : ""
-  }${state.baseSnapshot?.source?.kind === "ankiweb" && c.review_version && [0, 1, 2, 3, 4].includes(c.queue) ? `<div class="review-ratings" role="group" aria-label="回答をAnkiへ送信">${[["again", "不正解"], ["hard", "難しい"], ["good", "正解"], ["easy", "簡単"]].map(([rating, label]) => `<button type="button" class="review-rating" data-review-card="${c.id}" data-review-rating="${rating}">${label}</button>`).join("")}</div><p class="review-hint">評価後、GitHubで Create issue を押すと送信されます。先にAnkiを同期し、反映確認まで他の端末でこのカードを学習・同期しないでください。</p>` : ""}</div></article>`;
+  }${state.baseSnapshot?.source?.kind === "ankiweb" && c.review_version && [0, 1, 2, 3, 4].includes(c.queue) ? `<div class="review-ratings" role="group" aria-label="回答をAnkiへ送信">${[["again", "不正解"], ["hard", "難しい"], ["good", "正解"], ["easy", "簡単"]].map(([rating, label]) => `<button type="button" class="review-rating" data-review-card="${c.id}" data-review-rating="${rating}">${label}</button>`).join("")}</div><p class="review-hint">回答は定時更新で反映されます。先にAnkiを同期し、反映確認まで他の端末でこのカードを学習・同期しないでください。初回は接続・設定で自動送信を設定します。</p>` : ""}</div></article>`;
 }
 function cardResults() {
   const cards = selectedCards(),
@@ -1018,6 +1006,7 @@ function settings() {
     noteEditor.panel() +
     `
   <div class="settings-grid"><section class="panel"><div class="panel-title"><div><h2>接続の状態</h2><p>閲覧パスワードはブラウザーの外へ送りません。</p></div><span class="pill connected">${state.demo ? "デモ" : "復号済み"}</span></div>
+  <div class="device-login-setting"><h3>回答の自動送信</h3><p>このリポジトリの Issues 読み書き権限だけを持つ GitHub の fine-grained token を設定します。トークンは閲覧パスワードで暗号化し、この端末に保存します。同じサイト上のスクリプトはログイン中に利用できます。共有端末では設定しないでください。</p><form id="review-token-form"><label for="review-token">GitHubトークン</label><input id="review-token" type="password" autocomplete="off" required><button class="button subtle" type="submit">この端末に設定</button></form><button class="button subtle" id="review-token-remove">送信設定を解除</button><details><summary>送信結果を確認できなかった場合</summary><p>GitHubのIssuesとAnkiの履歴を確認してください。処理待ちの回答を取り消す場合はGitHubのIssueを閉じてください。確認後にのみ、この端末の重複防止を解除できます。</p><button class="button subtle" id="review-guards-clear">確認後、送信状態を解除</button></details></div>
   <dl class="connection-info"><div><dt>プロフィール</dt><dd>${esc(state.snapshot?.source.profile || "未設定")}</dd></div><div><dt>最終データ受信</dt><dd>${esc(syncLabel())}</dd></div><div><dt>接続方式</dt><dd>AnkiWeb / AnkiConnect → 暗号化Pages</dd></div></dl>
   <div class="info-box">PC停止中もGitHub ActionsがAnkiWebから定期取得します。学習した端末でAnkiWebへ同期してください。「表示を更新」は最後に公開されたデータを読み込みます。</div>
   <div class="device-login-setting"><h3>この端末の自動ログイン</h3><p>${state.deviceRemembered ? "有効です。次回からパスワードなしで開きます。" : "保存されていません。"}</p><button class="button subtle" id="device-login" ${state.demo ? "disabled" : ""}>${state.deviceRemembered ? "この端末の自動ログインを解除" : "この端末で自動ログインを有効にする"}</button></div><label class="setting-label" for="settings-grouping">カードのまとめ方</label>${groupingSelect("settings-grouping")}<p class="muted small">親フォルダごとは最上位のデッキでまとめます。カード一覧でも切り替えられます。</p><label class="setting-label" for="timezone">集計タイムゾーン</label><select id="timezone">${[
@@ -1045,6 +1034,32 @@ function paintCharts() {
   });
 }
 function bindView() {
+  $("#review-token-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (state.demo || state.busy) return;
+    state.busy = true;
+    const input = $("#review-token");
+    try {
+      await configureReviewToken(state.masterKey, input.value.trim());
+      input.value = "";
+      toast("この端末で回答の自動送信を設定しました。");
+    } catch (error) { toast(error.message || "設定できませんでした。"); }
+    finally { state.busy = false; }
+  });
+  $("#review-token-remove")?.addEventListener("click", async () => {
+    if (state.demo || state.busy) return;
+    state.busy = true;
+    try { await removeReviewToken(state.masterKey); toast("送信設定を解除しました。"); }
+    catch (error) { toast(error.message || "設定を解除できませんでした。"); }
+    finally { state.busy = false; }
+  });
+  $("#review-guards-clear")?.addEventListener("click", async () => {
+    if (state.demo || state.busy || !confirm("GitHubの未処理IssueとAnkiの履歴を確認しましたか？未処理の回答を取り消す場合は先にGitHubでIssueを閉じてください。確認せずに解除すると二重記録のおそれがあります。")) return;
+    state.busy = true;
+    try { await clearReviewGuards(state.masterKey); toast("この端末の送信状態を解除しました。"); }
+    catch (error) { toast(error.message || "送信状態を解除できませんでした。"); }
+    finally { state.busy = false; }
+  });
   bindDeckPickers();
   bindAnkiInsights($("#view"));
   document.querySelectorAll("[data-activity-label]").forEach((cell) => {
