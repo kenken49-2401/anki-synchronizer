@@ -41,6 +41,18 @@ function validate(value) {
   return value && value.schema_version === 1 &&
     ["studies", "scores", "tasks"].every(k => Array.isArray(value[k]));
 }
+// Read only the remote revision; used for an explicit password reset.
+export async function readStudyRevision(config, token) {
+  const url = location(config.owner, config.repo, config.branch, config.path);
+  const response = await fetch(url + "?ref=" + encodeURIComponent(config.branch),
+    {headers:headers(token), cache:"no-store", redirect:"error"});
+  if (response.status === 404) return {found:false, sha:null};
+  if (!response.ok) throw new Error("GitHubから読み込めませんでした（HTTP " + response.status + "）。");
+  const body = await response.json();
+  if (body.type !== "file" || !/^[a-f0-9]{40}$/.test(body.sha))
+    throw new Error("GitHubの保存データが不正です。");
+  return {found:true, sha:body.sha};
+}
 export async function readStudyData(config, token, key) {
   const url = location(config.owner, config.repo, config.branch, config.path);
   const response = await fetch(url + "?ref=" + encodeURIComponent(config.branch),
