@@ -1,32 +1,21 @@
 import {importPassword} from "./vault.mjs";
-import {readStudyData, writeStudyData} from "./study-github-storage.mjs";
+import {readStudyData, readStudyRevision, writeStudyData} from "./study-github-storage.mjs";
 const config={owner:"kenken49-2401",repo:"anki-synchronizer",branch:"prototype/study-data",path:"study-data/study.enc.json"};
 const q=s=>document.querySelector(s), status=t=>q("#cloudStatus").textContent=t;
-let key=null,token=null,sha=null,ready=false;
-q("#cloudConnect").onclick=async()=>{
-  ready=false;key=null;token=null;
-  try{
-    const entered=q("#cloudToken").value.trim(), password=q("#cloudPassword").value;
-    const newKey=await importPassword(password);
-    status("GitHub のデータを確認しています…");
-    const result=await readStudyData(config,entered,newKey);
-    if(result.found){
-      if(!window.studyBridge.valid(result.data)) throw Error("保存データの形式が正しくありません。");
-      if(!confirm("GitHub のデータで、この端末の記録を置き換えますか？")){status("接続を取り消しました。");return}
-      if(!window.studyBridge.replace(result.data)) throw Error("端末内に保存できませんでした。");
-    }
-    token=entered;key=newKey;sha=result.sha;ready=true;
-    q("#cloudToken").value="";q("#cloudPassword").value="";
-    status(result.found?"GitHub から読み込みました。「GitHubに保存」で変更を送れます。":"GitHub に保存データはまだありません。「GitHubに保存」でこの端末の記録を送れます。");
-  }catch(e){status(e.message||"接続できませんでした。")}
-};
-q("#cloudSave").onclick=async()=>{
-  if(!ready){status("先に GitHub に接続してください。");return}
-  try{
-    status("暗号化して GitHub に保存しています…");
-    const d=window.studyBridge.get();
-    sha=await writeStudyData(config,token,key,{...d,schema_version:1},sha);
-    status("GitHub に暗号化して保存しました。");
-  }catch(e){status(e.message||"保存できませんでした。")}
-};
-q("#cloudDisconnect").onclick=()=>{token=null;key=null;sha=null;ready=false;q("#cloudToken").value="";q("#cloudPassword").value="";status("接続を解除しました。")};
+let key=null,token=null,sha=null,ready=false,remembered=false,generation=0;
+
+// The browser keeps a non-extractable device key and an encrypted GitHub token.
+// Anyone who can use this browser profile may use the saved credentials.
+function sessionDb(){return new Promise((resolve,reject)=>{if(!window.isSecureContext||!window.indexedDB)return reject(Error('端末の記憶を利用できません。'));const request=indexedDB.open('study-atlas-connection:v1:'+location.pathname,1);request.onupgradeneeded=()=>request.result.createObjectStore('session');request.onerror=()=>reject(Error('端末の記憶を開けません。'));request.onblocked=()=>reject(Error('端末の記憶がブロックされました。'));request.onsuccess=()=>resolve(request.result)})}
+async function sessionOp(mode,action){const db=await sessionDb();try{return await new Promise((resolve,reject)=>{let result,settled=false;const timer=setTimeout(()=>{if(!settled){settled=true;try{tx.abort()}catch{}reject(Error('端末の記憶への操作がタイムアウトしました。'))}},5000);let tx;try{tx=db.transaction('session',mode);const request=action(tx.objectStore('session'));request.onsuccess=()=>{result=request.result};tx.oncomplete=()=>{if(!settled){settled=true;clearTimeout(timer);resolve(result)}};tx.onabort=tx.onerror=()=>{if(!settled){settled=true;clearTimeout(timer);reject(Error('端末の記憶を保存できません。'))}}}catch(e){clearTimeout(timer);reject(Error('端末の記憶を操作できません。'))}})}finally{db.close()}}
+async function rememberConnection(){const wrap=await crypto.subtle.generateKey({name:'AES-GCM',length:256},false,['encrypt','decrypt']),iv=crypto.getRandomValues(new Uint8Array(12));const cipher=await crypto.subtle.encrypt({name:'AES-GCM',iv},wrap,new TextEncoder().encode(token));await sessionOp('readwrite',s=>s.put({version:1,key,wrap,iv,cipher,sha},'connection'));remembered=true}
+async function restoreConnection(){const record=await sessionOp('readonly',s=>s.get('connection'));if(!record)return null;if(record.version!==1||!record.key||!record.wrap)throw Error('端末の記憶が読み込めません。');const clear=await crypto.subtle.decrypt({name:'AES-GCM',iv:record.iv},record.wrap,record.cipher);try{return {key:record.key,token:new TextDecoder().decode(clear),sha:record.sha}}finally{new Uint8Array(clear).fill(0)}}
+async function forgetConnection(){await sessionOp('readwrite',s=>s.delete('connection'));remembered=false}
+async function storeIfRequested(){if(q('#rememberConnection').checked){await rememberConnection()}else if(remembered){await forgetConnection()}}
+async function connect(entered,newKey){const result=await readStudyData(config,entered,newKey);if(result.found){if(!window.studyBridge.valid(result.data))throw Error("保存データの形式が正しくありません。");if(!confirm("GitHub のデータで、この端末の記録を置き換えますか？ 先にバックアップを保存することをおすすめします。")){status("接続を取り消しました。");return false}if(!window.studyBridge.replace(result.data))throw Error("端末内に保存できませんでした。")}token=entered;key=newKey;sha=result.sha;ready=true;q("#cloudToken").value="";q("#cloudPassword").value="";try{await storeIfRequested()}catch(e){status("接続しましたが、端末の記憶には保存できませんでした。");return true}status(result.found?"GitHub から読み込みました。「GitHubに保存」で変更を送れます。":"GitHub に保存データはまだありません。「GitHubに保存」でこの端末の記録を送れます。");return true}
+q("#cloudConnect").onclick=async()=>{++generation;ready=false;key=null;token=null;try{const entered=q("#cloudToken").value.trim(),newKey=await importPassword(q("#cloudPassword").value);status("GitHub のデータを確認しています…");await connect(entered,newKey)}catch(e){status(e.message||"接続できませんでした。")}};
+q("#cloudSave").onclick=async()=>{if(!ready){status("先に GitHub に接続してください。");return}try{status("暗号化して GitHub に保存しています…");const d=window.studyBridge.get();sha=await writeStudyData(config,token,key,{...d,schema_version:1},sha);try{if(remembered)await rememberConnection()}catch{status("GitHub に保存しましたが、端末の接続情報を更新できませんでした。次回は再接続してください。");return}status("GitHub に暗号化して保存しました。")}catch(e){status(e.message||"保存できませんでした。")}};
+q("#cloudDisconnect").onclick=async()=>{++generation;try{await forgetConnection();token=null;key=null;sha=null;ready=false;q("#rememberConnection").checked=false;q("#cloudToken").value="";q("#cloudPassword").value="";status("接続を解除し、この端末の接続情報を削除しました。")}catch(e){status("端末の接続情報を削除できませんでした。ブラウザーのサイトデータを確認してください。")}};
+
+q("#cloudReset").onclick=async()=>{++generation;ready=false;key=null;token=null;try{const entered=q("#cloudToken").value.trim(),newKey=await importPassword(q("#cloudPassword").value),d=window.studyBridge.get();if(!window.studyBridge.valid(d))throw Error("この端末のデータを確認できません。");const revision=await readStudyRevision(config,entered);const count=d.studies.length+d.scores.length+d.tasks.length+(d.pastPapers?.length||0);if(revision.found&&count===0)throw Error("この端末に学習記録がないため、既存データは上書きしません。以前の記録が残る端末かバックアップを確認してください。");if(revision.found&&!confirm("GitHub上の古い暗号化データを、この端末の記録で置き換えます。古いパスワードが分からない場合、GitHubにしかない記録は復元できません。先に「バックアップを書き出す」を実行してください。置き換えてよいですか？")){status("再設定を取り消しました。");return}status("新しいパスワードで保存しています…");const newSha=await writeStudyData(config,entered,newKey,{...d,schema_version:1},revision.sha);token=entered;key=newKey;sha=newSha;ready=true;q("#cloudToken").value="";q("#cloudPassword").value="";try{await storeIfRequested()}catch{status("パスワードは再設定しましたが、端末の記憶に保存できませんでした。");return}status("この端末の記録を新しいパスワードで GitHub に保存しました。")}catch(e){status(e.message||"再設定できませんでした。")}};
+(async()=>{const started=generation;try{const record=await restoreConnection();if(!record||generation!==started)return;const remote=await readStudyData(config,record.token,record.key);if(generation!==started)return;if(remote.sha!==record.sha){status("GitHub のデータが別の端末で更新されています。バックアップ後、トークンとパスワードで接続し直してください。");return}token=record.token;key=record.key;sha=record.sha;ready=true;remembered=true;q('#rememberConnection').checked=true;status("この端末の接続を復元しました。変更後は「GitHubに保存」を押してください。")}catch{if(generation===started)status("記憶した接続を復元できません。トークンとパスワードを入力して接続してください。")}})();
