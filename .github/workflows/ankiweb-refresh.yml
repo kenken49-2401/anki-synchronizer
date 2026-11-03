@@ -19,6 +19,9 @@ name: Publish encrypted Anki Pages
     paths:
       - "pages-data/snapshot.enc.json"
       - "web/**"
+      - "!web/study-atlas.html"
+      - "!web/study-cloud-ui.mjs"
+      - "!web/study-github-storage.mjs"
       - "pages_site.py"
       - "pages_crypto.py"
       - "dashboard.py"
