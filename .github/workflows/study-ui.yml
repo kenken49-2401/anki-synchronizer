@@ -1,0 +1,58 @@
+name: Publish study UI without Anki refresh
+
+"on":
+  push:
+    branches: [main]
+    paths:
+      - "web/study-atlas.html"
+      - "web/study-cloud-ui.mjs"
+      - "web/study-github-storage.mjs"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: vars.ANKI_AUTO_SYNC_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: anki-sync
+    permissions:
+      contents: read
+      pages: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/configure-pages@v5
+        id: pages
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: 3.12.14
+          enable-cache: true
+      - name: Reuse the published encrypted data and build UI
+        env:
+          PAGES_PASSWORD: ${{ secrets.PAGES_PASSWORD }}
+          PAGES_PREVIOUS_URL: ${{ steps.pages.outputs.base_url }}
+        run: uv run --frozen python scripts/study_fast_publish.py
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+          retention-days: 1
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/deploy-pages@v4
+        id: deployment
