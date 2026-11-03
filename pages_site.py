@@ -27,7 +27,7 @@ from pages_crypto import MAX_PACKAGE_BYTES, PackageError, decrypt, encrypt, pass
 
 ROOT = Path(__file__).resolve().parent
 PACKAGE_NAME = "snapshot.enc.json"
-ASSETS = {"index.html", "app.js", "styles.css", "stats.mjs", "vault.mjs", "tags.mjs", "tag-queue.mjs", "updates.mjs",
+ASSETS = {"study-atlas.html", "study-cloud-ui.mjs", "study-github-storage.mjs", "index.html", "app.js", "styles.css", "stats.mjs", "vault.mjs", "tags.mjs", "tag-queue.mjs", "updates.mjs",
           "device-session.mjs", "anki-insights.mjs", "anki-insights.css",
           "note-edits.mjs", "note-editor.mjs",
           "rich-note-field.mjs",
