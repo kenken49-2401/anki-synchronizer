@@ -1,6 +1,6 @@
 // Encrypted GitHub storage for the study prototype.
 // Tokens and passwords are supplied by the caller and are never persisted here.
-import { encryptData, decryptData } from "./vault.mjs";
+import { encryptData, decryptData } from "../../web/vault.mjs";
 
 const API = "https://api.github.com";
 const MAX_BYTES = 1024 * 1024;
