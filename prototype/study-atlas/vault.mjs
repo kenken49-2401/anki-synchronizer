@@ -1,0 +1,302 @@
+// Passwords, derived key material and decrypted images stay in this page's memory.
+const FORMAT = "anki-atlas-encrypted";
+const ITERATIONS = 600000;
+const MAX_CLEAR = 32 * 1024 * 1024;
+export const MAX_PACKAGE = 45 * 1024 * 1024;
+const encoder = new TextEncoder();
+const aad = encoder.encode("Anki Atlas snapshot v1");
+
+function decode(value, size) {
+  if (
+    typeof value !== "string" ||
+    value.length > MAX_PACKAGE ||
+    value.length % 4 !== 0 ||
+    !/^[A-Za-z0-9+/]*={0,2}$/.test(value)
+  )
+    throw new Error("暗号化ファイルの形式が正しくありません。");
+  const bytes = Uint8Array.from(atob(value), (c) => c.charCodeAt(0));
+  if (size !== undefined && bytes.length !== size)
+    throw new Error("暗号化ファイルの形式が正しくありません。");
+  return bytes;
+}
+
+export async function importPassword(password) {
+  if (!globalThis.crypto?.subtle)
+    throw new Error(
+      "HTTPSで開いてください。ローカルではlocalhostを使用できます。",
+    );
+  const bytes = encoder.encode(password);
+  if (bytes.length < 16 || bytes.length > 1024)
+    throw new Error(
+      "設定した閲覧パスワードを入力してください（16バイト以上）。",
+    );
+  try {
+    return await crypto.subtle.importKey("raw", bytes, "PBKDF2", false, [
+      "deriveKey",
+    ]);
+  } finally {
+    bytes.fill(0);
+  }
+}
+
+export async function decryptData(pkg, masterKey) {
+  if (
+    !pkg ||
+    pkg.format !== FORMAT ||
+    pkg.version !== 1 ||
+    pkg.kdf !== "PBKDF2-SHA256" ||
+    pkg.iterations !== ITERATIONS
+  )
+    throw new Error("対応していない暗号化ファイルです。");
+  const salt = decode(pkg.salt, 16),
+    iv = decode(pkg.iv, 12),
+    data = decode(pkg.ciphertext);
+  if (data.length < 16 || data.length > MAX_CLEAR + 16)
+    throw new Error("暗号化ファイルが大きすぎます。");
+  try {
+    const key = await crypto.subtle.deriveKey(
+      { name: "PBKDF2", salt, iterations: ITERATIONS, hash: "SHA-256" },
+      masterKey,
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["decrypt"],
+    );
+    const clear = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv, additionalData: aad, tagLength: 128 },
+      key,
+      data,
+    );
+    try {
+      const snapshot = JSON.parse(
+        new TextDecoder("utf-8", { fatal: true }).decode(clear),
+      );
+      return snapshot;
+    } finally {
+      new Uint8Array(clear).fill(0);
+    }
+  } catch {
+    throw new Error(
+      "復号できません。パスワード、またはファイルの破損を確認してください。",
+    );
+  }
+}
+
+export async function decryptPackage(pkg, masterKey) {
+  const snapshot = await decryptData(pkg, masterKey);
+  if (
+    snapshot?.schema_version !== 1 ||
+    !Array.isArray(snapshot.cards) ||
+    !Array.isArray(snapshot.reviews) ||
+    !snapshot.source ||
+    snapshot.cards.length > 50000 ||
+    snapshot.reviews.length > 1000000
+  )
+    throw new Error("復号した学習データの形式が正しくありません。");
+  return snapshot;
+}
+
+function encode(bytes) {
+  let result = "";
+  for (let i = 0; i < bytes.length; i += 8192)
+    result += String.fromCharCode(...bytes.subarray(i, i + 8192));
+  return btoa(result);
+}
+
+export async function encryptData(value, masterKey) {
+  const clear = encoder.encode(JSON.stringify(value));
+  if (clear.length > MAX_CLEAR) throw new Error("変更ファイルが大きすぎます。");
+  const salt = crypto.getRandomValues(new Uint8Array(16)),
+    iv = crypto.getRandomValues(new Uint8Array(12));
+  try {
+    const key = await crypto.subtle.deriveKey(
+      { name: "PBKDF2", salt, iterations: ITERATIONS, hash: "SHA-256" },
+      masterKey,
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["encrypt"],
+    );
+    const data = await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv, additionalData: aad, tagLength: 128 },
+      key,
+      clear,
+    );
+    return {
+      format: FORMAT,
+      version: 1,
+      kdf: "PBKDF2-SHA256",
+      iterations: ITERATIONS,
+      salt: encode(salt),
+      iv: encode(iv),
+      ciphertext: encode(new Uint8Array(data)),
+    };
+  } finally {
+    clear.fill(0);
+  }
+}
+
+export async function fetchPackage(url = "./snapshot.enc.json", limit = MAX_PACKAGE) {
+  const res = await fetch(url, {
+    cache: "no-store",
+    credentials: "omit",
+    redirect: "error",
+  });
+  if (res.status === 404)
+    throw new Error(
+      "データはまだ公開されていません。設定手順に沿って最初の更新を実行してください。",
+    );
+  if (!res.ok) throw new Error("暗号化データを読み込めませんでした。");
+  const reader = res.body.getReader();
+  const chunks = [];
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.length;
+      if (size > limit) throw new Error("暗号化ファイルが大きすぎます。");
+      chunks.push(value);
+    }
+  } catch (error) {
+    await reader.cancel();
+    throw error;
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.length;
+  }
+  try {
+    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  } catch {
+    throw new Error("暗号化ファイルの形式が正しくありません。");
+  }
+}
+
+function validRaster(bytes, mime) {
+  if (mime === "image/png")
+    return bytes.slice(0, 8).join() === "137,80,78,71,13,10,26,10";
+  if (mime === "image/jpeg")
+    return bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255;
+  const text = (n) => String.fromCharCode(...bytes.slice(0, n));
+  if (mime === "image/gif") return ["GIF87a", "GIF89a"].includes(text(6));
+  if (mime === "image/webp")
+    return (
+      text(4) === "RIFF" &&
+      String.fromCharCode(...bytes.slice(8, 12)) === "WEBP"
+    );
+  return false;
+}
+
+export async function createMediaURLs(snapshot, masterKey) {
+  const urls = new Map();
+  let total = 0, count = 0;
+  const names = new Set();
+  const addMedia = async (values) => {
+    if (!values || typeof values !== "object" || Array.isArray(values)) throw new Error();
+    const media = Object.values(values);
+    count += media.length;
+    if (count > 10000) throw new Error();
+    for (const name of Object.keys(values)) {
+      if (names.has(name)) throw new Error();
+      names.add(name);
+    }
+    for (const item of media) {
+      if (
+        !item ||
+        !/^[a-f0-9]{64}$/.test(item.id || "") ||
+        typeof item.data !== "string" ||
+        item.data.length > 2796204
+      )
+        throw new Error();
+      const bytes = decode(item.data);
+      total += bytes.length;
+      if (
+        bytes.length > 2 * 1024 * 1024 ||
+        total > 512 * 1024 * 1024 ||
+        !validRaster(bytes, item.mime)
+      )
+        throw new Error();
+      const hash = [
+        ...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)),
+      ]
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("");
+      if (hash !== item.id) throw new Error();
+      if (!urls.has(item.id))
+        urls.set(
+          item.id,
+          URL.createObjectURL(new Blob([bytes], { type: item.mime })),
+        );
+    }
+  };
+  try {
+    await addMedia(snapshot.media || {});
+    const packages = snapshot.media_packages || [];
+    if (!Array.isArray(packages) || packages.length > 256 || new Set(packages).size !== packages.length) throw new Error();
+    if (snapshot.media_index !== undefined) {
+      if (!masterKey || !snapshot.media_index || typeof snapshot.media_index !== "object" || Array.isArray(snapshot.media_index)) throw new Error();
+      const entries = Object.entries(snapshot.media_index);
+      const allowed = new Set(packages);
+      if (entries.length > 10000 || packages.some(name => typeof name !== "string" || !/^media-[a-f0-9]{64}\.enc\.json$/.test(name))) throw new Error();
+      for (const [id, name] of entries) if (!/^[a-f0-9]{64}$/.test(id) || !allowed.has(name)) throw new Error();
+      const index = new Map(entries), pending = new Map(), cache = new Map(), owners = new Map();
+      let closed = false, queue = Promise.resolve();
+      urls.close = () => { closed = true; cache.clear(); };
+      urls.loadImage = async (id) => {
+        if (closed || !index.has(id)) throw new Error("画像を読み込めません。");
+        const name = index.get(id);
+        if (urls.has(id)) {
+          if (cache.has(name)) { const item = cache.get(name); cache.delete(name); cache.set(name, item); }
+          return urls.get(id);
+        }
+        if (!pending.has(name)) {
+          const task = queue.then(async () => {
+            if (closed) throw new Error("画像の読み込みを中止しました。");
+            const part = await decryptData(await fetchPackage("./" + name, 8 * 1024 * 1024), masterKey);
+            if (part?.schema_version !== 1 || !part.media || part.media_index || part.media_packages) throw new Error("画像データの形式が正しくありません。");
+            const loaded = await createMediaURLs({media:part.media}, masterKey);
+            if (closed) { revokeMediaURLs(loaded); throw new Error("画像の読み込みを中止しました。"); }
+            const ids = [];
+            for (const [hash, url] of loaded) {
+              if (index.get(hash) !== name || urls.has(hash)) { URL.revokeObjectURL(url); continue; }
+              urls.set(hash, url); owners.set(hash, name); ids.push(hash);
+            }
+            cache.set(name, ids);
+            // At most eight small decrypted image packages remain in memory.
+            while (cache.size > 8) {
+              const oldest = cache.keys().next().value;
+              for (const hash of cache.get(oldest)) if (owners.get(hash) === oldest) {
+                URL.revokeObjectURL(urls.get(hash)); urls.delete(hash); owners.delete(hash);
+              }
+              cache.delete(oldest);
+            }
+          });
+          queue = task.catch(() => {});
+          pending.set(name, task);
+          task.finally(() => pending.delete(name)).catch(() => {});
+        }
+        await pending.get(name);
+        if (closed || !urls.has(id)) throw new Error("画像を読み込めません。");
+        return urls.get(id);
+      };
+      return urls;
+    }
+    for (const name of packages) {
+      if (!masterKey || typeof name !== "string" || !/^media-[a-f0-9]{64}\.enc\.json$/.test(name)) throw new Error();
+      const part = await decryptData(await fetchPackage("./" + name, 8 * 1024 * 1024), masterKey);
+      if (part?.schema_version !== 1 || !part.media) throw new Error();
+      await addMedia(part.media);
+    }
+    return urls;
+  } catch {
+    revokeMediaURLs(urls);
+    throw new Error("画像データの形式または容量が正しくありません。");
+  }
+}
+
+export function revokeMediaURLs(urls) {
+  urls.close?.();
+  for (const url of urls.values()) URL.revokeObjectURL(url);
+  urls.clear();
+}
