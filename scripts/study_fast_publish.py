@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -18,14 +19,24 @@ MAX_MEDIA_TOTAL = 768 * 1024 * 1024
 
 
 def download(client: httpx.Client, url: str, limit: int) -> bytes:
-    result = bytearray()
-    with client.stream("GET", url) as response:
-        response.raise_for_status()
-        for chunk in response.iter_bytes():
-            result.extend(chunk)
-            if len(result) > limit:
-                raise PackageError("Published encrypted data exceeds its limit.")
-    return bytes(result)
+    for attempt in range(3):
+        try:
+            result = bytearray()
+            with client.stream("GET", url) as response:
+                response.raise_for_status()
+                for chunk in response.iter_bytes():
+                    result.extend(chunk)
+                    if len(result) > limit:
+                        raise PackageError("Published encrypted data exceeds its limit.")
+            return bytes(result)
+        except httpx.HTTPStatusError as exc:
+            if attempt == 2 or exc.response.status_code not in (404, 408, 429, 500, 502, 503, 504):
+                raise
+        except httpx.TransportError:
+            if attempt == 2:
+                raise
+        time.sleep(2 ** attempt)
+    raise PackageError("Published data could not be retrieved.")
 
 
 def publish(previous_url: str, password: str, output: Path) -> None:
@@ -62,6 +73,16 @@ def publish(previous_url: str, password: str, output: Path) -> None:
 if __name__ == "__main__":
     try:
         publish(os.environ.get("PAGES_PREVIOUS_URL", ""), os.environ.get("PAGES_PASSWORD", ""), Path("site"))
-    except Exception:
-        print("Study UI publication failed; existing Pages deployment was preserved.", file=sys.stderr)
+    except Exception as exc:
+        if isinstance(exc, httpx.HTTPStatusError):
+            reason = "HTTP " + str(exc.response.status_code)
+        elif isinstance(exc, httpx.TimeoutException):
+            reason = "network timeout"
+        elif isinstance(exc, httpx.TransportError):
+            reason = "network connection error"
+        elif isinstance(exc, PackageError):
+            reason = str(exc)
+        else:
+            reason = type(exc).__name__
+        print("Study UI publication failed; existing Pages deployment was preserved. " + reason, file=sys.stderr)
         raise SystemExit(1) from None
