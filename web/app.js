@@ -461,6 +461,12 @@ async function submitReview(cardId, rating) {
     toast("最新のAnkiWebデータが必要です。更新して読み直してください。");
     return;
   }
+  const destination = window.open("about:blank", "_blank");
+  if (!destination) {
+    toast("GitHubを開けませんでした。ポップアップを許可してからもう一度お試しください。");
+    return;
+  }
+  destination.opener = null;
   state.busy = true;
   try {
     const labels = {again: "不正解", hard: "難しい", good: "正解", easy: "簡単"};
@@ -470,14 +476,10 @@ async function submitReview(cardId, rating) {
       request_id: crypto.randomUUID(), card_id: cardId, review_version: card.review_version, rating}, key);
     if (key !== state.masterKey) throw new Error("ログイン状態が変わりました。読み直してください。");
     const request = reviewRequest(JSON.stringify(encrypted));
-    $("#review-send-dialog")?.remove();
-    const dialog = document.createElement("dialog");
-    dialog.id = "review-send-dialog";
-    dialog.innerHTML = `<h2>${labels[rating]}をAnkiへ送る</h2><p>先にAnkiで同期し、反映確認まで他の端末でこのカードを学習・同期しないでください。未同期の回答があると競合を完全には防げません。</p><p>GitHubで <strong>Create issue</strong> を押すと送信します。Actionsの処理と反映確認の後、Ankiで同期してください。送信だけでは回答は記録されません。処理結果が不明な場合はAnkiの履歴を確認し、自動で再送しないでください。</p>${!request.prefilled ? '<label for="review-request-body">暗号化データをコピーしてGitHubの本文に貼り付け</label><textarea id="review-request-body" readonly></textarea>' : ''}<div class="tag-sync-actions"><a class="button primary" href="${esc(request.url)}" target="_blank" rel="noopener noreferrer">GitHubで送信を確定</a><form method="dialog"><button class="button subtle">閉じる</button></form></div>`;
-    document.body.append(dialog);
-    if (!request.prefilled) dialog.querySelector('textarea').value = request.body;
-    dialog.showModal();
-  } catch (err) { toast(err.message || "回答を準備できませんでした。"); }
+    if (!request.prefilled) throw new Error("回答が大きすぎるため送信できません。");
+    destination.location.replace(request.url);
+    toast("GitHubで Create issue を押すと送信されます。");
+  } catch (err) { destination.close(); toast(err.message || "回答を準備できませんでした。"); }
   finally { state.busy = false; }
 }
 
@@ -948,7 +950,7 @@ function renderStudyCard(c, index) {
           )
           .join("")}</details>`
       : ""
-  }${state.baseSnapshot?.source?.kind === "ankiweb" && c.review_version && [0, 1, 2, 3, 4].includes(c.queue) ? `<div class="tag-sync-actions" aria-label="回答をAnkiへ送信">${[["again", "不正解"], ["hard", "難しい"], ["good", "正解"], ["easy", "簡単"]].map(([rating, label]) => `<button type="button" class="button subtle" data-review-card="${c.id}" data-review-rating="${rating}">${label}</button>`).join("")}</div><p class="small muted">評価を選ぶとGitHubで送信を確認します。</p>` : ""}</div></article>`;
+  }${state.baseSnapshot?.source?.kind === "ankiweb" && c.review_version && [0, 1, 2, 3, 4].includes(c.queue) ? `<div class="review-ratings" role="group" aria-label="回答をAnkiへ送信">${[["again", "不正解"], ["hard", "難しい"], ["good", "正解"], ["easy", "簡単"]].map(([rating, label]) => `<button type="button" class="review-rating" data-review-card="${c.id}" data-review-rating="${rating}">${label}</button>`).join("")}</div><p class="review-hint">評価後、GitHubで Create issue を押すと送信されます。先にAnkiを同期し、反映確認まで他の端末でこのカードを学習・同期しないでください。</p>` : ""}</div></article>`;
 }
 function cardResults() {
   const cards = selectedCards(),
