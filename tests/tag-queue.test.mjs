@@ -6,7 +6,20 @@ import {
   unconfirmedTags,
   TAG_MARKER,
   TAG_TITLE,
+  reviewRequest,
+  REVIEW_MARKER,
+  REVIEW_TITLE,
 } from "../web/tag-queue.mjs";
+
+test("review submission contains only encrypted data and uses the review issue", async () => {
+  const key = await importPassword("browser-test-only-password-62710");
+  const encoded = JSON.stringify(await encryptData({ card_id: 123456789, rating: "again" }, key));
+  const request = reviewRequest(encoded), url = new URL(request.url);
+  assert.equal(url.searchParams.get("title"), REVIEW_TITLE);
+  assert.ok(request.body.startsWith(REVIEW_MARKER));
+  assert.equal(url.searchParams.get("body"), request.body);
+  assert.ok(!request.body.includes("123456789") && !request.body.includes("again"));
+});
 
 test("phone submission contains only ciphertext and opens the correct GitHub confirmation form", async () => {
   const key = await importPassword("browser-test-only-password-62710");

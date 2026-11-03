@@ -251,6 +251,11 @@ def validate_snapshot(value: Any) -> dict[str, Any]:
             "due": _integer(card.get("due", 0), "card.due", -MAX_ID),
             "suspended": suspended,
         })
+        if "review_version" in card:
+            version = card["review_version"]
+            if not isinstance(version, str) or re.fullmatch(r"[a-f0-9]{64}", version) is None:
+                raise SnapshotValidationError("Invalid review version")
+            safe_cards[-1]["review_version"] = version
         if "editable_fields" in card:
             editable = card["editable_fields"]
             if not isinstance(editable, dict) or not 1 <= len(editable) <= 64 or set(editable) != set(fields):

@@ -120,6 +120,8 @@ def _extract_snapshot(col: Collection, *, timezone: str, query: str, allow_empty
                 **({"stability": card.memory_state.stability, "difficulty": card.memory_state.difficulty} if card.memory_state else {}),
                 **({"desired_retention": card.desired_retention} if card.desired_retention is not None else {}),
             })
+            from review_sync import review_version
+            cards[-1]["review_version"] = review_version(col, int(card.id))
             if card.memory_state:
                 # Ask Anki for its native FSRS estimate, including its exact
                 # elapsed-day/decay rules. Never substitute an approximate formula.

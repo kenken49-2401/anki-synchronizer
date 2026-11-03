@@ -139,6 +139,65 @@ def test_unverified_result_is_never_acknowledged(remote, monkeypatch):
     assert not any(r.method in ('POST','PATCH') for r in requests)
 
 
+def test_review_claim_prevents_retry_after_uncertain_failure(remote, monkeypatch):
+    import uuid
+    import review_sync
+    rows, _ = remote
+    payload = {'format': 'anki-atlas-review', 'version': 1, 'request_id': str(uuid.uuid4()),
+               'card_id': 123, 'review_version': 'a' * 64, 'rating': 'good'}
+    rows[1] = issue()
+    rows[1]['title'] = q.REVIEW_TITLE
+    rows[1]['body'] = q.REVIEW_MARKER + '\n```json\n' + json.dumps(encrypt(payload, PASSWORD), separators=(',', ':')) + '\n```'
+    calls = []
+    def uncertain(*_):
+        calls.append(1)
+        raise CloudTagError('uncertain')
+    monkeypatch.setattr(review_sync, 'apply_review', uncertain)
+    with q.GitHubQueue('owner/repo', 'job-test-token') as queue:
+        assert q.process_queue(queue, PASSWORD, 'test-key')['rejected'] == 1
+        assert rows[1]['title'] == q.REVIEW_ATTENTION
+        assert q.process_queue(queue, PASSWORD, 'test-key')['applied'] == 0
+    assert calls == [1]
+
+
+def test_review_crash_leaves_claim_and_cannot_replay(remote, monkeypatch):
+    import uuid
+    import review_sync
+    rows, _ = remote
+    payload = {'format': 'anki-atlas-review', 'version': 1, 'request_id': str(uuid.uuid4()),
+               'card_id': 123, 'review_version': 'a' * 64, 'rating': 'easy'}
+    rows[1] = issue()
+    rows[1]['title'] = q.REVIEW_TITLE
+    rows[1]['body'] = q.REVIEW_MARKER + '\n```json\n' + json.dumps(encrypt(payload, PASSWORD), separators=(',', ':')) + '\n```'
+    def crash(*_):
+        raise KeyboardInterrupt()
+    monkeypatch.setattr(review_sync, 'apply_review', crash)
+    with q.GitHubQueue('owner/repo', 'job-test-token') as queue:
+        with pytest.raises(KeyboardInterrupt):
+            q.process_queue(queue, PASSWORD, 'test-key')
+        assert rows[1]['title'] == q.REVIEW_PROCESSING
+        assert q.process_queue(queue, PASSWORD, 'test-key')['applied'] == 0
+
+
+def test_review_verified_before_closing_issue(remote, monkeypatch):
+    import uuid
+    import review_sync
+    rows, _ = remote
+    payload = {'format': 'anki-atlas-review', 'version': 1, 'request_id': str(uuid.uuid4()),
+               'card_id': 123, 'review_version': 'a' * 64, 'rating': 'hard'}
+    rows[1] = issue()
+    rows[1]['title'] = q.REVIEW_TITLE
+    rows[1]['body'] = q.REVIEW_MARKER + '\n```json\n' + json.dumps(encrypt(payload, PASSWORD), separators=(',', ':')) + '\n```'
+    def verified(data, *_):
+        assert rows[1]['title'] == q.REVIEW_PROCESSING
+        assert data == payload
+        return {'verified': True}
+    monkeypatch.setattr(review_sync, 'apply_review', verified)
+    with q.GitHubQueue('owner/repo', 'job-test-token') as queue:
+        assert q.process_queue(queue, PASSWORD, 'test-key')['applied'] == 1
+    assert rows[1]['state'] == 'closed'
+
+
 def test_redirect_never_forwards_job_token(monkeypatch):
     calls = []
     def serve(request):

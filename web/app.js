@@ -26,6 +26,7 @@ import { watchUpdates } from "./updates.mjs";
 import {
   tagRequest,
   noteRequest,
+  reviewRequest,
   unconfirmedTags,
   TAG_REPOSITORY,
 } from "./tag-queue.mjs";
@@ -452,6 +453,32 @@ function openTagQueue(kind) {
   } catch (err) {
     toast(err.message);
   }
+}
+
+async function submitReview(cardId, rating) {
+  const card = state.baseSnapshot?.cards.find((c) => c.id === cardId);
+  if (state.demo || state.baseSnapshot?.source?.kind !== "ankiweb" || !card?.review_version || !state.masterKey || state.busy) {
+    toast("最新のAnkiWebデータが必要です。更新して読み直してください。");
+    return;
+  }
+  state.busy = true;
+  try {
+    const labels = {again: "不正解", hard: "難しい", good: "正解", easy: "簡単"};
+    if (!Object.hasOwn(labels, rating)) throw new Error("評価が正しくありません。");
+    const key = state.masterKey;
+    const encrypted = await encryptData({format: "anki-atlas-review", version: 1,
+      request_id: crypto.randomUUID(), card_id: cardId, review_version: card.review_version, rating}, key);
+    if (key !== state.masterKey) throw new Error("ログイン状態が変わりました。読み直してください。");
+    const request = reviewRequest(JSON.stringify(encrypted));
+    $("#review-send-dialog")?.remove();
+    const dialog = document.createElement("dialog");
+    dialog.id = "review-send-dialog";
+    dialog.innerHTML = `<h2>${labels[rating]}をAnkiへ送る</h2><p>先にAnkiで同期し、反映確認まで他の端末でこのカードを学習・同期しないでください。未同期の回答があると競合を完全には防げません。</p><p>GitHubで <strong>Create issue</strong> を押すと送信します。Actionsの処理と反映確認の後、Ankiで同期してください。送信だけでは回答は記録されません。処理結果が不明な場合はAnkiの履歴を確認し、自動で再送しないでください。</p>${!request.prefilled ? '<label for="review-request-body">暗号化データをコピーしてGitHubの本文に貼り付け</label><textarea id="review-request-body" readonly></textarea>' : ''}<div class="tag-sync-actions"><a class="button primary" href="${esc(request.url)}" target="_blank" rel="noopener noreferrer">GitHubで送信を確定</a><form method="dialog"><button class="button subtle">閉じる</button></form></div>`;
+    document.body.append(dialog);
+    if (!request.prefilled) dialog.querySelector('textarea').value = request.body;
+    dialog.showModal();
+  } catch (err) { toast(err.message || "回答を準備できませんでした。"); }
+  finally { state.busy = false; }
 }
 
 async function saveTagChange(changes) {
@@ -921,7 +948,7 @@ function renderStudyCard(c, index) {
           )
           .join("")}</details>`
       : ""
-  }</div></article>`;
+  }${state.baseSnapshot?.source?.kind === "ankiweb" && c.review_version && [0, 1, 2, 3, 4].includes(c.queue) ? `<div class="tag-sync-actions" aria-label="回答をAnkiへ送信">${[["again", "不正解"], ["hard", "難しい"], ["good", "正解"], ["easy", "簡単"]].map(([rating, label]) => `<button type="button" class="button subtle" data-review-card="${c.id}" data-review-rating="${rating}">${label}</button>`).join("")}</div><p class="small muted">評価を選ぶとGitHubで送信を確認します。</p>` : ""}</div></article>`;
 }
 function cardResults() {
   const cards = selectedCards(),
@@ -1231,6 +1258,9 @@ function bindCards() {
       updateCards();
       document.querySelector(`[data-answer="${id}"]`)?.focus();
     }),
+  );
+  document.querySelectorAll("[data-review-card]").forEach((el) =>
+    el.addEventListener("click", () => submitReview(Number(el.dataset.reviewCard), el.dataset.reviewRating)),
   );
   $("#toggle-all")?.addEventListener("click", () => {
     const cards = selectedCards().slice(state.page * 20, (state.page + 1) * 20);

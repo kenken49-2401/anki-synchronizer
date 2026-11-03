@@ -4,12 +4,17 @@ export const TAG_TITLE = "[Anki Atlas] Encrypted tag update";
 export const TAG_MARKER = "<!-- anki-atlas-tag-request:v1 -->";
 export const NOTE_TITLE = "[Anki Atlas] Encrypted note update";
 export const NOTE_MARKER = "<!-- anki-atlas-note-request:v1 -->";
+export const REVIEW_TITLE = "[Anki Atlas] Encrypted review";
+export const REVIEW_MARKER = "<!-- anki-atlas-review-request:v1 -->";
 
 export function tagRequest(encoded) {
   return encryptedRequest(encoded, TAG_TITLE, TAG_MARKER);
 }
 export function noteRequest(encoded) {
   return encryptedRequest(encoded, NOTE_TITLE, NOTE_MARKER);
+}
+export function reviewRequest(encoded) {
+  return encryptedRequest(encoded, REVIEW_TITLE, REVIEW_MARKER);
 }
 function encryptedRequest(encoded, title, marker) {
   if (typeof encoded !== "string" || encoded.length > 59000)

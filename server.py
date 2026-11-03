@@ -123,6 +123,7 @@ def create_server(env=None, *, test_engine=None, test_auth=None):
         "画像・音声は未対応です。作成・編集にはプレーンテキストを使います。"
         "request_idは操作ごとに新しいUUIDを生成し、同じ操作の再送では同じ値を使います。"
         "復習はnext_review→ユーザー回答→reveal_answer→評価の選択→record_answerの順です。"
+        "答えと一緒にrating_optionsの不正解・難しい・正解・簡単と次回間隔を提示し、ユーザーが選んだ評価のみ記録してください。"
         "回答評価はユーザーに選んでもらい、自動で記録しないでください。"
         "AnkiWeb同期は明示的なsync_ankiwebが必要です。成功するまで同期済みと説明しないでください。"
         "全文置換や削除にはユーザーの明示指示が必要です。")
@@ -174,7 +175,7 @@ def create_server(env=None, *, test_engine=None, test_auth=None):
 
     @mcp.tool(annotations=write, meta=read_meta)
     def reveal_answer(review_token: str) -> dict:
-        """ユーザーが回答してから正解と4つの評価の次回間隔を表示する。"""
+        """ユーザーが回答してから正解と4つの日本語の評価・次回間隔を提示する。"""
         owner()
         return engine.reveal(review_token)
 

@@ -107,6 +107,22 @@ def test_add_and_answer_idempotency(setup):
         engine.answer(token, "again", request)
 
 
+@pytest.mark.parametrize("rating,ease", [("again", 1), ("hard", 2), ("good", 3), ("easy", 4)])
+def test_review_options_record_selected_anki_rating_once(setup, rating, ease):
+    remote, key, engine = setup
+    add(engine)
+    token = engine.next_review("Study", rid())["review_token"]
+    revealed = engine.reveal(token)
+    assert [(option["rating"], option["label"]) for option in revealed["rating_options"]] == [
+        ("again", "不正解"), ("hard", "難しい"), ("good", "正解"), ("easy", "簡単")]
+    assert all(option["next_interval"] == revealed["ratings"][option["rating"]]
+               for option in revealed["rating_options"])
+    request = rid()
+    result = engine.answer(token, rating, request)
+    assert Engine(remote, key).answer(token, rating, request) == result
+    assert engine.run(lambda col, _: col.db.list("select ease from revlog")) == [ease]
+
+
 def test_duplicate_notes_rejected(setup):
     _, _, engine = setup
     add(engine)

@@ -267,8 +267,12 @@ class Engine:
         def action(col, state):
             card, states, review = self._review_card(col, state, token)
             review["revealed"] = True
+            intervals = dict(zip(["again", "hard", "good", "easy"], col.sched.describe_next_states(states)))
             return {"card_id": int(card.id), "answer": plain(card.answer()),
-                    "ratings": dict(zip(["again", "hard", "good", "easy"], col.sched.describe_next_states(states)))}
+                    "ratings": intervals,
+                    "rating_options": [{"rating": rating, "label": label, "next_interval": intervals[rating]}
+                                       for rating, label in (("again", "不正解"), ("hard", "難しい"),
+                                                             ("good", "正解"), ("easy", "簡単"))]}
         return self.run(action)
 
     def answer(self, token: str, rating: str, request_id: str) -> dict:

@@ -23,6 +23,10 @@ MARKER = '<!-- anki-atlas-tag-request:v1 -->'
 NOTE_TITLE = '[Anki Atlas] Encrypted note update'
 NOTE_MARKER = '<!-- anki-atlas-note-request:v1 -->'
 NOTE_ATTENTION_TITLE = '[Anki Atlas] Note update needs attention'
+REVIEW_TITLE = '[Anki Atlas] Encrypted review'
+REVIEW_MARKER = '<!-- anki-atlas-review-request:v1 -->'
+REVIEW_PROCESSING = '[Anki Atlas] Review processing - check Anki before retrying'
+REVIEW_ATTENTION = '[Anki Atlas] Review needs attention'
 MAX_BODY = 60000
 MAX_REQUESTS = 5
 
@@ -34,12 +38,13 @@ class QueueError(ValueError):
 def parse_body(body, password):
     if not isinstance(body, str) or len(body.encode('utf-8')) > MAX_BODY:
         raise QueueError('Invalid encrypted request.')
-    marker = NOTE_MARKER if body.startswith(NOTE_MARKER) else MARKER
+    marker = NOTE_MARKER if body.startswith(NOTE_MARKER) else REVIEW_MARKER if body.startswith(REVIEW_MARKER) else MARKER
     match = re.fullmatch(re.escape(marker) + r'\n```json\n([^\n]+)\n```\s*', body)
     if not match:
         raise QueueError('Invalid encrypted request.')
     try:
-        validator = validate_note_changes if marker == NOTE_MARKER else validate_changes
+        from review_sync import validate_review
+        validator = validate_note_changes if marker == NOTE_MARKER else validate_review if marker == REVIEW_MARKER else validate_changes
         return validator(decrypt(json.loads(match[1]), password))
     except (PackageError, TagImportError, NoteEditError, ValueError, RecursionError):
         raise QueueError('Invalid encrypted request.') from None
@@ -88,7 +93,7 @@ class GitHubQueue:
 
     def approved(self, issue):
         return (isinstance(issue, dict) and 'pull_request' not in issue
-                and issue.get('state') == 'open' and issue.get('title') in (TITLE, NOTE_TITLE)
+                and issue.get('state') == 'open' and issue.get('title') in (TITLE, NOTE_TITLE, REVIEW_TITLE)
                 and issue.get('user', {}).get('id') == self.owner['id']
                 and type(issue.get('number')) is int and issue['number'] > 0)
 
@@ -142,11 +147,34 @@ def process_queue(queue, password, hkey, endpoint=None):
             continue
         try:
             package = parse_body(issue.get('body'), password)
-            if (issue['title'] == NOTE_TITLE) != (package['format'] == 'anki-atlas-note-changes'):
+            if ((issue['title'] == REVIEW_TITLE) != (package['format'] == 'anki-atlas-review')
+                    or (issue['title'] == NOTE_TITLE) != (package['format'] == 'anki-atlas-note-changes')):
                 raise QueueError('Request type does not match its title.')
         except QueueError:
             queue.reject(issue)
             result['rejected'] += 1
+            continue
+        if issue['title'] == REVIEW_TITLE:
+            # Claim before any Anki access. A crash or uncertain response never
+            # automatically replays this non-idempotent operation.
+            claimed = queue.request('PATCH', f"/issues/{issue['number']}", json={'title': REVIEW_PROCESSING})
+            if (claimed.get('title') != REVIEW_PROCESSING or claimed.get('body') != issue.get('body')
+                    or claimed.get('state') != 'open' or claimed.get('user', {}).get('id') != queue.owner['id']):
+                result['skipped'] += 1
+                continue
+            try:
+                from review_sync import apply_review
+                verified = apply_review(package, hkey, endpoint)
+                if verified.get('verified') is not True:
+                    raise CloudTagError('Review could not be verified.')
+            except Exception:
+                queue.request('PATCH', f"/issues/{issue['number']}", json={'title': REVIEW_ATTENTION})
+                queue.request('POST', f"/issues/{issue['number']}/comments", json={'body': '回答の反映を確認できません。Ankiで履歴を確認してください。この回答は自動再試行しません。'})
+                result['rejected'] += 1
+                continue
+            queue.request('POST', f"/issues/{issue['number']}/comments", json={'body': '回答のAnkiWebへの反映を確認しました。Ankiで同期してください。'})
+            queue.request('PATCH', f"/issues/{issue['number']}", json={'state': 'closed', 'state_reason': 'completed'})
+            result['applied'] += 1
             continue
         try:
             verified = apply_cloud_changes(package, hkey, endpoint)
