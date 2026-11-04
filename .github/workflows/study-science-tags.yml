@@ -28,3 +28,5 @@ jobs:
         run: uv run --frozen python scripts/assistant_science_tags.py
 
 # Retry with missing-year support.
+
+# Include 1997–1999 physics.
