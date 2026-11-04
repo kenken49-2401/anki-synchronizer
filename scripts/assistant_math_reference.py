@@ -24,7 +24,7 @@ def merge_reference(current, payload):
         if not isinstance(questions, list) or len(questions) != 6:
             raise ValueError("Invalid questions.")
         for q in questions:
-            if not isinstance(q, dict) or q.get("difficulty") not in (None, "A", "B", "C", "D"):
+            if not isinstance(q, dict) or q.get("difficulty") not in (None, "A", "B", "C", "D") or q.get("status") not in (None, "new", "done", "review"):
                 raise ValueError("Invalid difficulty.")
             for field in ("minutes", "expectedMinutes"):
                 v = q.get(field)
@@ -34,6 +34,14 @@ def merge_reference(current, payload):
         if year not in reference:
             reference[year] = copy.deepcopy(questions)
             count += 1
+        elif isinstance(reference[year], list) and len(reference[year]) == 6:
+            changed = False
+            for target, incoming in zip(reference[year], questions):
+                if isinstance(target, dict) and "status" not in target and incoming.get("status") is not None:
+                    target["status"] = incoming["status"]
+                    changed = True
+            if changed:
+                count += 1
     return updated, count
 
 def run():
