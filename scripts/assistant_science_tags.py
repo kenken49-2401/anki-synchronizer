@@ -1,5 +1,5 @@
 """Add science subject tags from published entrance exam topic indexes."""
-import base64, copy, json, os, sys
+import base64, copy, json, os, sys, uuid
 from pathlib import Path
 import httpx
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -24,8 +24,11 @@ def merge(current):
     for year, questions in ITEMS.items():
         matches=[p for p in papers if p.get('subject')=='理科' and p.get('exam')==exam and p.get('year')==int(year)]
         if len(matches)>1: raise ValueError('Duplicate year')
-        if not matches: continue
-        row=matches[0]; saved=row.setdefault('tagsByQuestion',{})
+        if not matches:
+            row={'id':str(uuid.uuid4()),'exam':exam,'subject':'理科','year':int(year),'statuses':{}}
+            papers.append(row)
+        else: row=matches[0]
+        saved=row.setdefault('tagsByQuestion',{})
         if not isinstance(saved,dict): raise ValueError('Invalid tags')
         for question, incoming in questions.items():
             category='物理' if question.startswith('物理') else '化学'
@@ -59,6 +62,6 @@ def run():
         print(f'Verified {checked} science questions; added {count} tags.')
 if __name__=='__main__':
     try: run()
-    except Exception:
-        print('Science tag import failed: verify secrets, exam identity, years, and concurrent changes.',file=sys.stderr)
+    except Exception as exc:
+        print('Science tag import failed:', type(exc).__name__, str(exc) if isinstance(exc, ValueError) else '', file=sys.stderr)
         raise SystemExit(1) from None
