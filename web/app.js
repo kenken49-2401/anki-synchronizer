@@ -746,11 +746,11 @@ function heatmap() {
     .map((d) => {
       const day = state.stats.byDay.get(d) || { count: 0, correct: 0, time: 0 };
       const label = `${d}：${minutes(day.time)}分・${day.count}回・正答率 ${percent(day.correct, day.count)}`;
-      return `<button type="button" class="heat-cell level-${day.count === 0 ? 0 : day.count < 25 ? 1 : day.count < 50 ? 2 : day.count < 100 ? 3 : 4}" data-activity-label="${esc(label)}" title="${esc(label)}" aria-label="${esc(label)}"></button>`;
+      return `<button type="button" class="heat-cell level-${day.count === 0 ? 0 : day.count < 250 ? 1 : day.count < 500 ? 2 : day.count < 1000 ? 3 : 4}" data-activity-label="${esc(label)}" title="${esc(label)}" aria-label="${esc(label)}"></button>`;
     })
     .join(
       "",
-    )}</div><output class="activity-detail" id="activity-detail" aria-live="polite">日付にカーソルを合わせるか、タップすると学習時間を表示します。</output><div class="heatmap-legend"><span>Ankiの回答履歴から集計・濃い紫は100回以上</span><div>少<span class="heat-cell level-0"></span><span class="heat-cell level-1"></span><span class="heat-cell level-2"></span><span class="heat-cell level-3"></span><span class="heat-cell level-4"></span>多</div></div>`;
+    )}</div><output class="activity-detail" id="activity-detail" aria-live="polite">日付にカーソルを合わせるか、タップすると学習時間を表示します。</output><div class="heatmap-legend"><span>Ankiの回答履歴から集計・濃い紫は1,000回以上</span><div>少<span class="heat-cell level-0"></span><span class="heat-cell level-1"></span><span class="heat-cell level-2"></span><span class="heat-cell level-3"></span><span class="heat-cell level-4"></span>多</div></div>`;
 }
 function deckPicker(id = "deck-filter") {
   const selected = new Set(state.decks);
