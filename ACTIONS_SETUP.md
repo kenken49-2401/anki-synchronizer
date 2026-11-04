@@ -16,7 +16,7 @@
 2. 自分のPCで以下の手順2を実行し、閲覧パスワードとAnkiWebトークンを作る。
 3. [Environments設定](https://github.com/kenken49-2401/anki-synchronizer/settings/environments)で `anki-sync` を作り、手順3のSecretsを登録する。
 4. [公開ワークフロー](https://github.com/kenken49-2401/anki-synchronizer/actions/workflows/ankiweb-refresh.yml)を `source=ankiweb` で手動実行し、公開画面を確認する。
-5. [Actions Variables](https://github.com/kenken49-2401/anki-synchronizer/settings/variables/actions)に `ANKI_AUTO_SYNC_ENABLED=true` を登録する。これで毎時のタグ・本文変更の確認も動きます。Ankiへの書き戻しを止める場合は `ANKI_TAG_IMPORT_ENABLED=false` を追加します。
+5. [Actions Variables](https://github.com/kenken49-2401/anki-synchronizer/settings/variables/actions)に `ANKI_AUTO_SYNC_ENABLED=true` を登録する。これで15分ごとのタグ・本文変更の確認も動きます。Ankiへの書き戻しを止める場合は `ANKI_TAG_IMPORT_ENABLED=false` を追加します。
 
 クラウド環境のGitHub連携ではSecrets・Variablesの確認と設定APIが403で拒否されました。コード変更と自動テストは行えますが、認証情報の登録と `ANKI_AUTO_SYNC_ENABLED=true` の設定はGitHub画面で行ってください。秘密の値をチャットへ送る必要はありません。
 
@@ -81,15 +81,15 @@ PCのAnkiConnectから作った `pages-data/snapshot.enc.json` を使う場合�
 
 | Variable名 | 値 |
 | --- | --- |
-| `ANKI_AUTO_SYNC_ENABLED` | 小文字の **`true`**。毎時の公開・確認処理を有効化 |
+| `ANKI_AUTO_SYNC_ENABLED` | 小文字の **`true`**。15分ごとの公開・確認処理を有効化 |
 | `ANKI_TAG_IMPORT_ENABLED` | 任意。省略時は **`true`** として本人送信のタグ・本文変更を確認。**`false`** で両方の書き戻し停止 |
 | `ANKI_TIMEZONE` | 任意。日本なら `Asia/Tokyo`。省略時も同じ |
 
 未設定・falseでは定期実行をスキップします。手動実行はこの変数に関係なく、明示的な操作として実行できます。デフォルトブランチへ暗号化シードをpushした場合も、有効化済みならAnkiWeb更新が動きます。
 
-予定は `17 * * * *`（UTC）。日本時間でも **毎時17分** です。毎回、許可された未処理タグ変更を先に確認・反映し、その後にカード・統計・画像を暗号化して公開します。未処理変更がなければ読み取り・公開だけです。GitHubの混雑などによる遅延・欠落があり、時刻は保証されません。公開リポジトリでは60日間活動がないと定期実行が停止する場合があります。
+予定は `2,17,32,47 * * * *`（UTC）。日本時間でも **毎時2・17・32・47分** です。毎回、許可された未処理タグ変更を先に確認・反映し、その後にカード・統計・画像を暗号化して公開します。未処理変更がなければ読み取り・公開だけです。GitHubの混雑などによる遅延・欠落があり、時刻は保証されません。公開リポジトリでは60日間活動がないと定期実行が停止する場合があります。
 
-公開リポジトリの標準ランナーは無料で利用できます。非公開リポジトリではプランの無料実行分数を消費します。1回5分なら毎時実行で30日約3,600分です。他の実行も含めて利用量を確認し、有料実行の予算は設定しないでください。Pages配信物は公開アセットと暗号文のみで、平文のコレクション・画像・パスワードはartifactやキャッシュへ保存しません。
+公開リポジトリの標準ランナーは無料で利用できます。非公開リポジトリではプランの無料実行分数を消費します。1回5分なら15分ごとの実行で30日約14,400分です。他の実行も含めて利用量を確認し、有料実行の予算は設定しないでください。Pages配信物は公開アセットと暗号文のみで、平文のコレクション・画像・パスワードはartifactやキャッシュへ保存しません。
 
 ## 6. スマホからタグをAnkiWebへ戻す
 
@@ -98,7 +98,7 @@ PCのAnkiConnectから作った `pages-data/snapshot.enc.json` を使う場合�
 1. スマホのAnkiで同期し、学習内容・編集をAnkiWebへ送ります。
 2. Pagesのアプリでカードにタグを付け、**スマホから送信** を押します。
 3. **GitHubで送信を確定** を開き、リポジトリ所有者のアカウントでログインし、**Create issue** を押します。小さい変更は暗号文が入力済みです。大きい場合は画面の「暗号化データをコピー」を押して、GitHubの本文へ貼り付けます。タイトル・暗号文の内容は変更しません。
-4. 毎時のActionsが未処理のIssueを確認します。暗号文を復号し、AnkiWeb上のノートのID・カード対応・本文の指紋を照合して、足りないタグだけを追加します。追加後は通常の差分同期を行い、さらにAnkiWebから読み直して反映を確認します。
+4. 15分ごとのActionsが未処理のIssueを確認します。暗号文を復号し、AnkiWeb上のノートのID・カード対応・本文の指紋を照合して、足りないタグだけを追加します。追加後は通常の差分同期を行い、さらにAnkiWebから読み直して反映を確認します。
 5. 成功したIssueには完了メッセージが付き、閉じられます。その後、**スマホのAnkiで同期** を押すとタグを受け取れます。PCの起動・AnkiConnectは不要です。
 6. 後続のPages公開が成功したら、アプリの **表示を更新** で新しいタグが表示されます。反映済みのタグだけ下書きから自動で外れます。
 
@@ -114,7 +114,7 @@ GitHubのIssueは暗号化された変更の受け付けに使います。平文
 
 ## カード本文の編集をスマホから反映する
 
-タグと同じSecrets・毎時ワークフローを利用するため、追加のパスワードやトークンの登録は不要です。`ANKI_TAG_IMPORT_ENABLED=false` の場合は本文の書き戻しも停止します。
+タグと同じSecrets・定期ワークフローを利用するため、追加のパスワードやトークンの登録は不要です。`ANKI_TAG_IMPORT_ENABLED=false` の場合は本文の書き戻しも停止します。
 
 アプリの **本文を編集 → 本文の下書きを保存 → 本文をスマホから送信 → GitHubでCreate issue** の順で確定します。対象は所有者本人の `[Anki Atlas] Encrypted note update` です。本文は暗号化され、平文のフィールドはIssueやログへ出しません。
 

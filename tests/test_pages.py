@@ -183,7 +183,7 @@ def test_workflow_publishes_ciphertext_only_and_never_uses_render():
     import yaml
     workflow = yaml.safe_load((pages_site.ROOT / ".github/workflows/ankiweb-refresh.yml").read_text())
     assert "pull_request" not in workflow["on"]
-    assert workflow["on"]["schedule"][0]["cron"] == "17 * * * *"
+    assert workflow["on"]["schedule"][0]["cron"] == "2,17,32,47 * * * *"
     build = workflow["jobs"]["build"]
     assert "ANKI_AUTO_SYNC_ENABLED" in build["if"]
     steps = build["steps"]
