@@ -77,7 +77,7 @@ def run():
         result = response.json()
         if result.get("type") != "file" or result.get("encoding") != "base64" or not isinstance(result.get("sha"), str):
             raise ValueError("Existing data is unavailable.")
-        raw = base64.b64decode(result["content"].replace("\\n", ""), validate=True)
+        raw = base64.b64decode("".join(result["content"].split()), validate=True)
         if len(raw) > MAX_BYTES:
             raise ValueError("Existing data exceeds limit.")
         current = decrypt(json.loads(raw), password)
