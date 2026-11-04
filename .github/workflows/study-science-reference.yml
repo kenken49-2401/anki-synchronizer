@@ -1,0 +1,32 @@
+name: Import encrypted science reference
+"on":
+  push:
+    branches: [main]
+    paths:
+      - "assistant-import/science-reference.enc.json"
+      - ".github/workflows/study-science-reference.yml"
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: study-assistant-import
+  cancel-in-progress: false
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: 3.12.14
+          enable-cache: true
+      - name: Merge encrypted science reference
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          STUDY_ATLAS_PASSWORD: ${{ secrets.STUDY_ATLAS_PASSWORD }}
+          ASSISTANT_IMPORT_KEY: ${{ secrets.ASSISTANT_IMPORT_KEY }}
+        run: uv run --frozen python scripts/assistant_science_reference.py
+
