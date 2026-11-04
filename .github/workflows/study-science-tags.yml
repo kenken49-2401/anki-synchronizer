@@ -26,3 +26,5 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           STUDY_ATLAS_PASSWORD: ${{ secrets.STUDY_ATLAS_PASSWORD }}
         run: uv run --frozen python scripts/assistant_science_tags.py
+
+# Retry with missing-year support.
