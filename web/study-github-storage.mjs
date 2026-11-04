@@ -66,6 +66,17 @@ export async function readStudyData(config, token, key) {
   if (!validate(data)) throw new Error("学習データの形式が正しくありません。");
   return {found:true, data, sha:body.sha};
 }
+export async function readStudyBlob(config, token, key, sha) {
+  if (!/^[a-f0-9]{40}$/.test(sha || '')) throw new Error('以前の同期情報がありません。');
+  const prefix = location(config.owner, config.repo, config.branch, config.path).split('/contents/')[0];
+  const response = await fetch(prefix + '/git/blobs/' + sha, {headers:headers(token),cache:'no-store',redirect:'error'});
+  if (!response.ok) throw new Error('以前の同期データを取得できませんでした（HTTP ' + response.status + '）。');
+  const body = await response.json();
+  if (body.sha !== sha || body.encoding !== 'base64') throw new Error('以前の同期データを確認できません。');
+  const data = await decryptData(JSON.parse(decode(body.content)), key);
+  if (!validate(data)) throw new Error('以前の同期データの形式が正しくありません。');
+  return data;
+}
 export async function writeStudyData(config, token, key, data, sha) {
   if (!validate(data)) throw new Error("学習データの形式が正しくありません。");
   if (sha !== null && !/^[a-f0-9]{40}$/.test(sha || ""))
