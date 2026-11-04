@@ -1,0 +1,29 @@
+name: Consolidate science tags
+"on":
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/study-science-tag-groups.yml"
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: study-assistant-import
+  cancel-in-progress: false
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: 3.12.14
+          enable-cache: true
+      - name: Consolidate encrypted science tags
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          STUDY_ATLAS_PASSWORD: ${{ secrets.STUDY_ATLAS_PASSWORD }}
+        run: uv run --frozen python scripts/assistant_science_tag_groups.py
