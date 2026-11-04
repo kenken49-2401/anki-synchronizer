@@ -1,4 +1,4 @@
-name: Consolidate science tags
+name: Update requested science tags
 "on":
   push:
     branches: [main]
