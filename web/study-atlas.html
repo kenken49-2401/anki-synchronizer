@@ -248,6 +248,7 @@ function nearGoalSuggestions(data,review){
 function makeStudyConsultation(data,today){
  const review=nearGoals(data,today),candidates=nearGoalSuggestions(data,review),num=n=>Number(n.toFixed(2)),lines=[];
  const clean=s=>String(s??'').replace(/[\r\n\t]+/g,' ').slice(0,150);
+ lines.push('GitHubコネクタで非公開リポジトリ kenken49-2401/exam-study の study-atlas/reminders ブランチにある study-atlas/chatgpt-context.json を読んで、学習記録全体を参照してください。sourceRevision と公開リポジトリ kenken49-2401/anki-synchronizer の prototype/study-data ブランチの study-data/study.enc.json の blob SHA を比較し、一致しない場合やファイルが読めない場合はその旨を伝えてください。GitHubに未保存の端末内変更は確認できません。');
  lines.push('あなたは受験勉強の伴走者です。以下の記録を使い、①試験中の時間配分 ②タグ別の得意・不得意 ③目標点との差について、各項目の根拠と具体的な次の行動を日本語で提案してください。');
  lines.push('記録のない数値を推測しないでください。少ない問題数から得意・不得意を断定せず、同じ問題に複数のタグがある点、試験間の難易度や配点の違いに注意してください。実際の試験時間や原因が未記録なら確認事項として示してください。目安時間との差だけで失点の原因を断定しないでください。');
  lines.push('\n【対象模試：直近最大3回】');
