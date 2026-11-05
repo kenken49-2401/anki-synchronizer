@@ -28,3 +28,5 @@ jobs:
           STUDY_ATLAS_PASSWORD: ${{ secrets.STUDY_ATLAS_PASSWORD }}
           ASSISTANT_IMPORT_KEY: ${{ secrets.ASSISTANT_IMPORT_KEY }}
         run: uv run --frozen python scripts/study_reminder_bootstrap.py
+
+# Refresh the task-only bootstrap after the first notification check.
