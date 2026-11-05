@@ -237,6 +237,14 @@ function nearGoals(data, today) {
 }
 
 
+function nearGoalSuggestions(data,review){
+ const groups=new Map();
+ for(const exam of review.exams){const rows=(data.scores||[]).filter(r=>r&&r.kind==='模試'&&r.date===exam.date&&typeof r.name==='string'&&r.name.trim()===exam.name);for(const r of rows){if(rows.filter(x=>x.subject===r.subject).length!==1)continue;const questions=Array.isArray(r.questions)?r.questions:[];for(const q of questions){if(!q||typeof q.name!=='string'||questions.filter(z=>z&&z.name===q.name).length!==1||!Array.isArray(q.tags)||!Number.isFinite(q.score)||!Number.isFinite(q.max)||q.max<=0||q.score<0||q.score>q.max)continue;const subject=r.subject==='理科'&&q.name.startsWith('物理')?'物理':r.subject==='理科'&&q.name.startsWith('化学')?'化学':r.subject;for(const tag of new Set(q.tags.filter(t=>typeof t==='string'&&t.trim()))){const key=JSON.stringify([subject,tag]);if(!groups.has(key))groups.set(key,{subject,tag,results:[]});groups.get(key).results.push({name:exam.name,date:exam.date,part:q.name,rate:q.score/q.max})}}}}
+ const topics=[...groups.values()].filter(x=>x.results.length>=2).map(x=>({...x,mean:x.results.reduce((a,z)=>a+z.rate,0)/x.results.length})).sort((a,b)=>a.mean-b.mean||a.tag.localeCompare(b.tag,'ja'));
+ const reviewTags=new Map();for(const p of data.pastPapers||[]){if(!p||typeof p!=='object'||!p.statuses||!p.tagsByQuestion)continue;for(const [name,state] of Object.entries(p.statuses)){if(state!=='review')continue;const tags=p.tagsByQuestion[name];if(!Array.isArray(tags))continue;const subject=p.subject==='理科'&&name.startsWith('物理')?'物理':p.subject==='理科'&&name.startsWith('化学')?'化学':p.subject;for(const tag of new Set(tags.filter(t=>typeof t==='string'&&t.trim()))){const k=JSON.stringify([subject,tag]);if(!reviewTags.has(k))reviewTags.set(k,{subject,tag,count:0});reviewTags.get(k).count++}}}
+ return {topics:topics.slice(0,3),reviews:[...reviewTags.values()].sort((a,b)=>b.count-a.count||a.tag.localeCompare(b.tag,'ja')).slice(0,3)};
+}
+
 let nearGoalEdit=null;
 function renderNearGoals(){
  const list=$('#nearGoalList');list.replaceChildren();const today=localDate();
@@ -246,6 +254,7 @@ function renderNearGoals(){
  add(r.exams.length?'対象模試：'+r.exams.map(x=>x.date+' '+x.name).join(' / '):'日付のある模試がありません。');
  add('直近3回までの模試の科目別得点率を平均。未完成の得点・同一模試の重複科目は除外します。試験の難易度の差は考慮しません。');
  for(const x of r.ranking)add(x.subject+'：平均 '+Number((x.meanRate*100).toFixed(1))+'%（'+x.records.length+'件） / '+x.records.map(v=>v.date+' '+v.name+' '+v.score+'/'+v.max+'点').join('、')+(x.change===null?'':' / 前回比 '+Number(x.change.toFixed(1))+'ポイント'));
+ const candidates=nearGoalSuggestions(data,r);root.append(el('h4','振り返る候補（記録から自動集計）'));if(candidates.topics.length){for(const t of candidates.topics){const evidence=t.results.map(x=>x.date+' '+x.name+' '+x.part+' '+Math.round(x.rate*100)+'%').join('、');add(t.subject+'・'+t.tag+'：平均 '+Number((t.mean*100).toFixed(1))+'%（'+t.results.length+'問）。内訳：'+evidence+'。まず該当問題を解き直し、間違えた箇所を確認する候補です。')}}else if(r.ranking.length){const x=r.ranking[0];add(x.subject+'：対象模試で平均得点率が最も低い科目（'+Number((x.meanRate*100).toFixed(1))+'%、'+x.records.length+'件）。まず問題を解き直して、間違えた箇所を確認する候補です。')}else add('得点がそろうと、振り返る候補を表示します。');if(candidates.reviews.length)for(const x of candidates.reviews)add(x.subject+'・'+x.tag+'：過去問で要復習 '+x.count+'問。該当問題の復習を予定に入れる候補です。');add('候補は得点と復習状態の集計です。試験の難易度差や苦手の原因は判定していません。');
  const studies=Object.entries(r.study.minutes);add('学習時間（'+r.study.since+'〜'+r.study.until+'）：'+(studies.length?studies.map(([k,v])=>k+' '+v+'分').join('、'):'記録なし'));
  add('目標との差は最新の4科目の模試合計と比較します。目標と模試の配点・対象が同じか確認してください。');
  for(const g of data.nearGoals||[]){const totals=r.exams.map(exam=>{const rows=data.scores.filter(x=>x.kind==='模試'&&x.date===exam.date&&x.name.trim()===exam.name);const subjects=['国語','数学','英語','理科'];if(!subjects.every(subject=>rows.filter(x=>x.subject===subject&&x.scoreComplete!==false&&Number.isFinite(x.score)).length===1)||rows.length!==4)return null;return {exam,total:rows.reduce((a,x)=>a+x.score,0)}}).filter(Boolean);if(totals.length)add(g.name+'：最新の合計 '+totals[0].total+'点（'+totals[0].exam.date+' '+totals[0].exam.name+'） / 目標との差 '+Number((g.target-totals[0].total).toFixed(2))+'点（目標−得点）');else add(g.name+'：4科目の完成した同一模試の記録がないため、目標との差は計算できません。')}
