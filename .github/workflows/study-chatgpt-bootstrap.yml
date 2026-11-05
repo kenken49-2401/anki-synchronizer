@@ -1,9 +1,5 @@
 name: Prepare encrypted ChatGPT bootstrap
 "on":
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/study-chatgpt-bootstrap.yml
   workflow_dispatch:
 permissions:
   contents: write
