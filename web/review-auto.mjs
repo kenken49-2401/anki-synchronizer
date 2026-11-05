@@ -42,6 +42,12 @@ export async function removeReviewToken(key) {
 export async function clearReviewGuards(key) {
   await locked(async () => { const data = await read(key); data.pending = {}; await save(key, data); });
 }
+export async function loadHiddenReviews(key) {
+  const data = await read(key);
+  return new Map(Object.entries(data.pending)
+    .filter(([, entry]) => entry?.hide === true && typeof entry.version === "string")
+    .map(([id, entry]) => [Number(id), entry.version]));
+}
 export async function submitAutomaticReview(key, card, rating) {
   return locked(async () => {
     const data = await read(key), id = String(card.id);
@@ -67,6 +73,10 @@ export async function submitAutomaticReview(key, card, rating) {
       }
       throw new Error("送信結果を確認できません。GitHubのIssuesを確認し、自動で再送しないでください。");
     }
-    return true;
+    if (rating === "good" || rating === "easy") {
+      data.pending[id].hide = true;
+      try { await save(key, data); } catch { return {hiddenSaved: false}; }
+    }
+    return {hiddenSaved: true};
   });
 }

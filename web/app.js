@@ -23,7 +23,7 @@ import { renderAnkiInsights, bindAnkiInsights } from "./anki-insights.mjs";
 import { createNoteEditor } from "./note-editor.mjs";
 import { noteFingerprint } from "./note-edits.mjs";
 import { watchUpdates } from "./updates.mjs";
-import { clearReviewGuards, configureReviewToken, removeReviewToken, submitAutomaticReview } from "./review-auto.mjs";
+import { clearReviewGuards, configureReviewToken, loadHiddenReviews, removeReviewToken, submitAutomaticReview } from "./review-auto.mjs";
 import {
   tagRequest,
   noteRequest,
@@ -103,6 +103,7 @@ const state = {
   includeSubdecks: localStorage.getItem("atlas-subdecks") !== "false",
   page: 0,
   dueOnly: false,
+  hiddenReviews: new Map(),
   timezone: localStorage.getItem("atlas-timezone") || "Asia/Tokyo",
   expanded: new Set(),
   busy: false,
@@ -466,8 +467,12 @@ async function submitReview(cardId, rating) {
   try {
     const labels = {again: "不正解", hard: "難しい", good: "正解", easy: "簡単"};
     if (!Object.hasOwn(labels, rating)) throw new Error("評価が正しくありません。");
-    await submitAutomaticReview(state.masterKey, card, rating);
-    toast("回答を送信しました。定時更新でAnkiへの反映を確認します。");
+    const result = await submitAutomaticReview(state.masterKey, card, rating);
+    if (rating === "good" || rating === "easy") {
+      state.hiddenReviews.set(card.id, card.review_version);
+      if (state.dueOnly && state.view === "cards") updateCards();
+    }
+    toast(result.hiddenSaved ? "回答を送信しました。定時更新でAnkiへの反映を確認します。" : "回答は送信されましたが、非表示状態を保存できませんでした。再送せずAnkiで確認してください。");
   } catch (err) { toast(err.message || "回答を送信できませんでした。"); }
   finally { state.busy = false; }
 }
@@ -581,6 +586,7 @@ function login(message = "") {
       revokeMediaURLs(state.mediaURLs);
       state.mediaURLs = urls;
       state.masterKey = key;
+      try { state.hiddenReviews = await loadHiddenReviews(key); } catch { state.hiddenReviews = new Map(); }
       await restoreTagDraft(snapshot);
       await noteEditor.restore(snapshot);
       setSnapshot(snapshot);
@@ -917,14 +923,15 @@ function cardsView() {
   <section class="cards-main"><div class="card-toolbar"><label class="search-input">${icon("search", 18)}<input id="search" type="search" placeholder="質問・答え・タグを検索" aria-label="カードを検索" value="${esc(state.query)}"></label>
   ${deckPicker()}
   <select id="sort" aria-label="並び順"><option value="default">カード順</option><option value="accuracy" ${state.sort === "accuracy" ? "selected" : ""}>正解率が低い順</option><option value="recent" ${state.sort === "recent" ? "selected" : ""}>最近学習した順</option></select></div>
-  <div class="folder-controls"><label>まとめ方 ${groupingSelect("grouping")}</label><label class="checkbox-label"><input type="checkbox" id="include-subdecks" ${state.includeSubdecks ? "checked" : ""}>サブデッキを含める</label><label class="checkbox-label"><input type="checkbox" id="due-only" ${state.dueOnly ? "checked" : ""}>今日までが期限</label></div>${state.dueOnly ? '<p class="small muted">期限日が今日以前の学習・復習カードを表示します。新規・休止・埋没カードは含みません。期限情報がないカードは判定できません。最新データに更新してください。</p>' : ''}<div id="card-results">${cardResults()}</div></section></div>
+  <div class="folder-controls"><label>まとめ方 ${groupingSelect("grouping")}</label><label class="checkbox-label"><input type="checkbox" id="include-subdecks" ${state.includeSubdecks ? "checked" : ""}>サブデッキを含める</label><label class="checkbox-label"><input type="checkbox" id="due-only" ${state.dueOnly ? "checked" : ""}>今日までが期限</label></div>${state.dueOnly ? '<p class="small muted">期限日が今日以前の学習・復習カードを表示します。新規・休止・埋没カードと期限情報がないカードは含みません。「正解」「簡単」を送信したカードは、反映を待つ間この一覧から隠れます。送信状況はGitHubのIssuesで確認できます。</p>' : ''}<div id="card-results">${cardResults()}</div></section></div>
   <p class="data-note">${icon("check", 14)} 正解率：Again＝不正解、Hard / Good / Easy＝正解。未回答は「—」。フォルダはAnkiのデッキ／サブデッキに対応します。</p>`
   );
 }
 function selectedCards() {
   const zone = state.snapshot.source.timezone || state.timezone;
   const rollover = state.snapshot.source.rollover_hour ?? 4;
-  const cards = filterCards(state.snapshot.cards, {...state,
+  const visible = state.dueOnly ? state.snapshot.cards.filter((card) => state.hiddenReviews.get(card.id) !== card.review_version || !card.review_version) : state.snapshot.cards;
+  const cards = filterCards(visible, {...state,
     dueThrough: state.dueOnly ? dayKey(new Date(), zone, rollover) : null,
     dueTimezone: zone, dueRollover: rollover}, state.stats.byCard);
   return groupCards(cards, state.groupBy).flatMap((g) => g.cards);
@@ -1061,7 +1068,7 @@ function bindView() {
   $("#review-guards-clear")?.addEventListener("click", async () => {
     if (state.demo || state.busy || !confirm("GitHubの未処理IssueとAnkiの履歴を確認しましたか？未処理の回答を取り消す場合は先にGitHubでIssueを閉じてください。確認せずに解除すると二重記録のおそれがあります。")) return;
     state.busy = true;
-    try { await clearReviewGuards(state.masterKey); toast("この端末の送信状態を解除しました。"); }
+    try { await clearReviewGuards(state.masterKey); state.hiddenReviews.clear(); toast("この端末の送信状態を解除しました。"); }
     catch (error) { toast(error.message || "送信状態を解除できませんでした。"); }
     finally { state.busy = false; }
   });
@@ -1394,6 +1401,7 @@ else {
       const snapshot = await decryptPackage(await fetchPackage(), key);
       const urls = await createMediaURLs(snapshot, key);
       state.masterKey = key;
+      try { state.hiddenReviews = await loadHiddenReviews(key); } catch { state.hiddenReviews = new Map(); }
       state.mediaURLs = urls;
       await restoreTagDraft(snapshot);
       await noteEditor.restore(snapshot);
