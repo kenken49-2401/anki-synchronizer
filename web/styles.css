@@ -2307,6 +2307,13 @@ input::placeholder {
   flex-wrap: wrap;
   gap: 8px;
 }
+.sync-request-status {
+  flex-basis: 100%;
+  color: #637a8b;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.sync-request-status[hidden] { display: none; }
 .review-ratings {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

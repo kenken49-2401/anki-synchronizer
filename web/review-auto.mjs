@@ -42,6 +42,23 @@ export async function removeReviewToken(key) {
 export async function clearReviewGuards(key) {
   await locked(async () => { const data = await read(key); data.pending = {}; await save(key, data); });
 }
+export async function requestAnkiSync(key) {
+  const data = await locked(() => read(key));
+  if (!data.token) throw new Error("接続・設定でGitHubトークンを設定してください。手動同期にはActions: Read and writeが必要です。");
+  let response;
+  try {
+    response = await fetch(`https://api.github.com/repos/${TAG_REPOSITORY}/actions/workflows/ankiweb-refresh.yml/dispatches`, {
+      method: "POST", headers: headers(data.token), redirect: "error", cache: "no-store",
+      body: JSON.stringify({ref: "main", inputs: {source: "ankiweb", discard_previous: "false"}}),
+    });
+  } catch {
+    throw new Error("同期の開始を確認できません。GitHub Actionsを確認してから再試行してください。");
+  }
+  if (response.status === 403 || response.status === 404)
+    throw new Error("同期を開始できません。GitHubトークンにActions: Read and writeを追加してください。");
+  if (response.status !== 204)
+    throw new Error(`同期の開始を確認できません（HTTP ${response.status}）。GitHub Actionsを確認してください。`);
+}
 export async function loadHiddenReviews(key) {
   const data = await read(key);
   return new Map(Object.entries(data.pending)

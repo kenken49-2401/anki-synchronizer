@@ -23,7 +23,7 @@ import { renderAnkiInsights, bindAnkiInsights } from "./anki-insights.mjs";
 import { createNoteEditor } from "./note-editor.mjs";
 import { noteFingerprint } from "./note-edits.mjs";
 import { watchUpdates } from "./updates.mjs";
-import { clearReviewGuards, configureReviewToken, loadHiddenReviews, removeReviewToken, submitAutomaticReview } from "./review-auto.mjs";
+import { clearReviewGuards, configureReviewToken, loadHiddenReviews, removeReviewToken, requestAnkiSync, submitAutomaticReview } from "./review-auto.mjs";
 import {
   tagRequest,
   noteRequest,
@@ -103,6 +103,7 @@ const state = {
   includeSubdecks: localStorage.getItem("atlas-subdecks") !== "false",
   page: 0,
   dueOnly: false,
+  syncRequested: false,
   hiddenReviews: new Map(),
   timezone: localStorage.getItem("atlas-timezone") || "Asia/Tokyo",
   expanded: new Set(),
@@ -671,6 +672,9 @@ function navigate(view) {
 function heading(eyebrow, title, description, action = "") {
   return `<div class="page-heading"><div><span class="eyebrow">${eyebrow}</span><h1>${title}</h1><p>${description}</p></div>${action}</div>`;
 }
+function syncButton() {
+  return `<button class="button subtle" data-sync-now ${state.demo ? "disabled" : ""}>${icon("refresh", 17)}今すぐ同期</button><span class="sync-request-status" data-sync-status role="status" ${state.syncRequested ? "" : "hidden"}>同期受付済み・<a href="https://github.com/${TAG_REPOSITORY}/actions/workflows/ankiweb-refresh.yml" target="_blank" rel="noopener noreferrer">実行状況</a>を確認後、表示を更新</span>`;
+}
 function empty() {
   return `<section class="empty-state"><span class="empty-icon">${icon("cloud", 36)}</span><h2>あなたのAnkiと、つながろう。</h2><p>いつものカードを、いつでも振り返れる場所へ。<br>PCのAnkiを接続すると、カードと学習記録がここに届きます。</p><button class="button primary" data-go-settings>接続を設定する ${icon("arrow", 17)}</button><p class="muted small">アカウントの設定はあとから変更できます。</p></section>`;
 }
@@ -838,7 +842,7 @@ function overview() {
       "A LITTLE PROGRESS, EVERY DAY",
       "今日も、学びをひとつ。",
       "あなたの知識のつながりと、日々の積み重ねを見渡しましょう。",
-      `<button class="button subtle" id="refresh">${icon("refresh", 17)}表示を更新</button>`,
+      `<div class="tag-sync-actions">${syncButton()}<button class="button subtle" id="refresh">${icon("refresh", 17)}表示を更新</button></div>`,
     ) +
     `<div class="scope-controls">${deckPicker("overview-decks")}<span class="muted small">選択したデッキのAnki学習履歴</span></div>` +
     metrics() +
@@ -912,9 +916,9 @@ function cardsView() {
       "EXPLORE YOUR KNOWLEDGE",
       "カードを、じっくり読み返す。",
       "タグやAnkiのフォルダでまとめて、知識をひとつのまとまりに。",
-      '<button class="button subtle" id="export-cards">' +
+      '<div class="tag-sync-actions">' + syncButton() + '<button class="button subtle" id="export-cards">' +
         icon("download", 17) +
-        "Markdownで保存</button>",
+        "Markdownで保存</button></div>",
     ) +
     tagSyncPanel() +
     noteEditor.panel() +
@@ -1018,7 +1022,7 @@ function settings() {
     noteEditor.panel() +
     `
   <div class="settings-grid"><section class="panel"><div class="panel-title"><div><h2>接続の状態</h2><p>閲覧パスワードはブラウザーの外へ送りません。</p></div><span class="pill connected">${state.demo ? "デモ" : "復号済み"}</span></div>
-  <div class="device-login-setting"><h3>回答の自動送信</h3><p>このリポジトリの Issues 読み書き権限だけを持つ GitHub の fine-grained token を設定します。トークンは閲覧パスワードで暗号化し、この端末に保存します。同じサイト上のスクリプトはログイン中に利用できます。共有端末では設定しないでください。</p><form id="review-token-form"><label for="review-token">GitHubトークン</label><input id="review-token" type="password" autocomplete="off" required><button class="button subtle" type="submit">この端末に設定</button></form><button class="button subtle" id="review-token-remove">送信設定を解除</button><details><summary>送信結果を確認できなかった場合</summary><p>GitHubのIssuesとAnkiの履歴を確認してください。処理待ちの回答を取り消す場合はGitHubのIssueを閉じてください。確認後にのみ、この端末の重複防止を解除できます。</p><button class="button subtle" id="review-guards-clear">確認後、送信状態を解除</button></details></div>
+  <div class="device-login-setting"><h3>回答の自動送信・手動同期</h3><p>このリポジトリに限定した fine-grained token を設定します。回答送信には Issues: Read and write、今すぐ同期には Actions: Read and write が必要です。Actions権限ではこのリポジトリの他のワークフローも実行できます。トークンは閲覧パスワードで暗号化し、この端末に保存します。同じサイト上のスクリプトはログイン中に利用できます。共有端末では設定しないでください。</p><form id="review-token-form"><label for="review-token">GitHubトークン</label><input id="review-token" type="password" autocomplete="off" required><button class="button subtle" type="submit">この端末に設定</button></form><button class="button subtle" id="review-token-remove">送信設定を解除</button><details><summary>送信結果を確認できなかった場合</summary><p>GitHubのIssuesとAnkiの履歴を確認してください。処理待ちの回答を取り消す場合はGitHubのIssueを閉じてください。確認後にのみ、この端末の重複防止を解除できます。</p><button class="button subtle" id="review-guards-clear">確認後、送信状態を解除</button></details></div>
   <dl class="connection-info"><div><dt>プロフィール</dt><dd>${esc(state.snapshot?.source.profile || "未設定")}</dd></div><div><dt>最終データ受信</dt><dd>${esc(syncLabel())}</dd></div><div><dt>接続方式</dt><dd>AnkiWeb / AnkiConnect → 暗号化Pages</dd></div></dl>
   <div class="info-box">PC停止中もGitHub ActionsがAnkiWebから定期取得します。学習した端末でAnkiWebへ同期してください。「表示を更新」は最後に公開されたデータを読み込みます。</div>
   <div class="device-login-setting"><h3>この端末の自動ログイン</h3><p>${state.deviceRemembered ? "有効です。次回からパスワードなしで開きます。" : "保存されていません。"}</p><button class="button subtle" id="device-login" ${state.demo ? "disabled" : ""}>${state.deviceRemembered ? "この端末の自動ログインを解除" : "この端末で自動ログインを有効にする"}</button></div><label class="setting-label" for="settings-grouping">カードのまとめ方</label>${groupingSelect("settings-grouping")}<p class="muted small">親フォルダごとは最上位のデッキでまとめます。カード一覧でも切り替えられます。</p><label class="setting-label" for="timezone">集計タイムゾーン</label><select id="timezone">${[
@@ -1046,6 +1050,18 @@ function paintCharts() {
   });
 }
 function bindView() {
+  document.querySelectorAll("[data-sync-now]").forEach((button) => button.addEventListener("click", async () => {
+    if (state.busy || state.demo || !state.masterKey) return;
+    state.busy = true;
+    button.disabled = true;
+    try {
+      await requestAnkiSync(state.masterKey);
+      state.syncRequested = true;
+      document.querySelectorAll("[data-sync-status]").forEach((el) => { el.hidden = false; });
+      toast("同期を開始しました。完了後に「表示を更新」で最新データを読み込めます。");
+    } catch (error) { toast(error.message || "同期を開始できませんでした。"); }
+    finally { state.busy = false; button.disabled = false; }
+  }));
   $("#review-token-form")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (state.demo || state.busy) return;
