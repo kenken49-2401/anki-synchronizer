@@ -193,7 +193,8 @@ function renderQuantity(parent,task,today){
 function setTaskTodayPlan(task,today,planned,done=false){const previous=task.todayPlan;task.todayPlan=planned?{date:today,done:!!done}:null;if(!saveTasks()){if(previous===undefined)delete task.todayPlan;else task.todayPlan=previous;render()}}
 function renderTodayTaskPlan(root,tasks,today){const selected=tasks.filter(x=>!x.done&&x.todayPlan?.date===today);root.append(el('h3','今日取り組むタスク（'+selected.length+'件）'));const list=el('ul','');list.className='today-task-list';root.append(list);if(!selected.length){list.append(el('li','下のタスクから「今日取り組む」を選べます。','muted'));return}for(const task of selected){const li=el('li',''),label=el('label','','today-task-check'),check=document.createElement('input');check.type='checkbox';check.checked=task.todayPlan.done===true;check.setAttribute('aria-label',task.title+' の今日の取り組みを完了');check.onchange=()=>setTaskTodayPlan(task,today,true,check.checked);label.append(check,document.createTextNode(task.title));li.append(label,el('span','期日 '+task.date,'muted'));list.append(li)}root.append(el('p','ここでのチェックは今日の取り組み状況です。タスク全体の完了には、下の一覧の「完了」を使います。','muted'))}
 function addTodayTaskChoice(li,task,today){if(task.done)return;const label=el('label','','today-task-choice'),input=document.createElement('input');input.type='checkbox';input.checked=task.todayPlan?.date===today;input.setAttribute('aria-label',task.title+' を今日取り組むタスクに選ぶ');input.onchange=()=>setTaskTodayPlan(task,today,input.checked,false);label.append(input,document.createTextNode('今日取り組む'));li.append(label)}
-function render(){const today=localDate();$('#today').textContent=duration(data.studies.filter(x=>x.date===today).reduce((a,x)=>a+x.minutes,0));$('#week').textContent=duration(data.studies.filter(x=>x.date>=dateOffset(-6)&&x.date<=today).reduce((a,x)=>a+x.minutes,0));$('#pending').textContent=data.tasks.filter(x=>!x.done&&x.date<=today).length+'件';
+let renderedTaskPlanDate=localDate();
+function render(){const today=localDate();renderedTaskPlanDate=today;$('#today').textContent=duration(data.studies.filter(x=>x.date===today).reduce((a,x)=>a+x.minutes,0));$('#week').textContent=duration(data.studies.filter(x=>x.date>=dateOffset(-6)&&x.date<=today).reduce((a,x)=>a+x.minutes,0));$('#pending').textContent=data.tasks.filter(x=>!x.done&&x.date<=today).length+'件';
 const dates=Array.from({length:14},(_,i)=>dateOffset(i-13));studyChart($('#studyChart'),dates,data.studies);
 const sl=$('#studyList');sl.replaceChildren();[...data.studies].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,20).forEach(x=>{item(sl,x.date+'　'+x.subject+'　'+duration(x.minutes),()=>{data.studies=data.studies.filter(y=>y.id!==x.id);save()},null,()=>beginStudyEdit(x.id));const marker=el('span','','study-swatch study-list-swatch');marker.style.backgroundColor=studyColor(x.subject);marker.setAttribute('aria-hidden','true');sl.lastElementChild.prepend(marker)});
 renderScores();renderPapers();renderTagCatalog();
@@ -331,7 +332,7 @@ function showPage(){
   if(current==='near-goals')renderNearGoals();
 }
 window.addEventListener('hashchange',showPage);
-showPage();reminders();setInterval(reminders,30000);window.addEventListener('resize',render);
+showPage();reminders();setInterval(reminders,30000);setInterval(()=>{if(localDate()!==renderedTaskPlanDate)render()},30000);document.addEventListener('visibilitychange',()=>{if(!document.hidden&&localDate()!==renderedTaskPlanDate)render()});window.addEventListener('resize',render);
 </script><script type="module" src="./study-cloud-ui.mjs"></script></body></html>
 
 
