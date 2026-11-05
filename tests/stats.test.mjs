@@ -11,7 +11,27 @@ import {
   deckTree,
   groupCards,
   periodSummary,
+  dueByStudyDay,
 } from "../web/stats.mjs";
+
+test("due filter uses Anki study day and excludes new, inactive and unknown cards", () => {
+  const today = "2026-10-16";
+  const cards = [
+    {id: 1, queue: 2, due_date: "2026-10-15"},
+    {id: 2, queue: 2, due_date: today},
+    {id: 3, queue: 3, due_date: "2026-10-17"},
+    {id: 4, queue: 1, due: Date.parse("2026-10-16T17:59:00Z") / 1000},
+    {id: 5, queue: 1, due: Date.parse("2026-10-16T19:00:00Z") / 1000},
+    {id: 6, queue: 0, due_date: today},
+    {id: 7, queue: -2, due_date: today},
+    {id: 8, queue: -1, due_date: today},
+    {id: 9, queue: 2},
+    {id: 10, queue: 2, due_date: today, suspended: true},
+  ].map((c) => ({deck: "Study", tags: [], front: "", back: "", ...c}));
+  assert.deepEqual(cards.filter((c) => dueByStudyDay(c, today, "Asia/Tokyo", 4)).map((c) => c.id), [1, 2, 4]);
+  assert.deepEqual(filterCards(cards, {dueThrough: today, dueTimezone: "Asia/Tokyo", dueRollover: 4}).map((c) => c.id), [1, 2, 4]);
+  assert.equal(filterCards(cards).length, cards.length);
+});
 
 test("period statistics sum Anki time, ratings and decks across Tokyo day boundaries", () => {
   const now = new Date("2026-10-16T05:00:00Z"),

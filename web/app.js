@@ -102,6 +102,7 @@ const state = {
     : "none",
   includeSubdecks: localStorage.getItem("atlas-subdecks") !== "false",
   page: 0,
+  dueOnly: false,
   timezone: localStorage.getItem("atlas-timezone") || "Asia/Tokyo",
   expanded: new Set(),
   busy: false,
@@ -916,12 +917,16 @@ function cardsView() {
   <section class="cards-main"><div class="card-toolbar"><label class="search-input">${icon("search", 18)}<input id="search" type="search" placeholder="質問・答え・タグを検索" aria-label="カードを検索" value="${esc(state.query)}"></label>
   ${deckPicker()}
   <select id="sort" aria-label="並び順"><option value="default">カード順</option><option value="accuracy" ${state.sort === "accuracy" ? "selected" : ""}>正解率が低い順</option><option value="recent" ${state.sort === "recent" ? "selected" : ""}>最近学習した順</option></select></div>
-  <div class="folder-controls"><label>まとめ方 ${groupingSelect("grouping")}</label><label class="checkbox-label"><input type="checkbox" id="include-subdecks" ${state.includeSubdecks ? "checked" : ""}>サブデッキを含める</label></div><div id="card-results">${cardResults()}</div></section></div>
+  <div class="folder-controls"><label>まとめ方 ${groupingSelect("grouping")}</label><label class="checkbox-label"><input type="checkbox" id="include-subdecks" ${state.includeSubdecks ? "checked" : ""}>サブデッキを含める</label><label class="checkbox-label"><input type="checkbox" id="due-only" ${state.dueOnly ? "checked" : ""}>今日までが期限</label></div>${state.dueOnly ? '<p class="small muted">期限日が今日以前の学習・復習カードを表示します。新規・休止・埋没カードは含みません。期限情報がないカードは判定できません。最新データに更新してください。</p>' : ''}<div id="card-results">${cardResults()}</div></section></div>
   <p class="data-note">${icon("check", 14)} 正解率：Again＝不正解、Hard / Good / Easy＝正解。未回答は「—」。フォルダはAnkiのデッキ／サブデッキに対応します。</p>`
   );
 }
 function selectedCards() {
-  const cards = filterCards(state.snapshot.cards, state, state.stats.byCard);
+  const zone = state.snapshot.source.timezone || state.timezone;
+  const rollover = state.snapshot.source.rollover_hour ?? 4;
+  const cards = filterCards(state.snapshot.cards, {...state,
+    dueThrough: state.dueOnly ? dayKey(new Date(), zone, rollover) : null,
+    dueTimezone: zone, dueRollover: rollover}, state.stats.byCard);
   return groupCards(cards, state.groupBy).flatMap((g) => g.cards);
 }
 function renderStudyCard(c, index) {
@@ -1165,6 +1170,11 @@ function bindView() {
     state.sort = e.target.value;
     state.page = 0;
     updateCards();
+  });
+  $("#due-only")?.addEventListener("change", (e) => {
+    state.dueOnly = e.target.checked;
+    state.page = 0;
+    shell();
   });
   $("#export-cards")?.addEventListener("click", exportCards);
   bindCards();

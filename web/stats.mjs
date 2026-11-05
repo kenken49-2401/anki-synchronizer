@@ -119,6 +119,16 @@ export function summarize(
   };
 }
 
+export function dueByStudyDay(card, today, timezone = "Asia/Tokyo", rolloverHour = 4) {
+  if (card.suspended || ![1, 2, 3, 4].includes(card.queue)) return false;
+  if ([1, 4].includes(card.queue)) {
+    if (!Number.isFinite(card.due) || card.due < 1_000_000_000) return false;
+    const dueDay = dayKey(card.due * 1000, timezone, rolloverHour);
+    return dueDay !== null && dueDay <= today;
+  }
+  return typeof card.due_date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(card.due_date) && card.due_date <= today;
+}
+
 export function filterCards(
   cards,
   {
@@ -128,6 +138,9 @@ export function filterCards(
     includeSubdecks = false,
     query = "",
     sort = "default",
+    dueThrough = null,
+    dueTimezone = "Asia/Tokyo",
+    dueRollover = 4,
   } = {},
   byCard = new Map(),
 ) {
@@ -145,7 +158,8 @@ export function filterCards(
         [c.front, c.back, c.deck, ...c.tags, ...Object.values(c.fields || {})]
           .join(" ")
           .toLocaleLowerCase()
-          .includes(q)),
+          .includes(q)) &&
+      (!dueThrough || dueByStudyDay(c, dueThrough, dueTimezone, dueRollover)),
   );
   if (sort === "accuracy")
     selected.sort((a, b) => {
