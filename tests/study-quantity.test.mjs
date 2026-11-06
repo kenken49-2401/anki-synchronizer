@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import vm from 'node:vm';
+const html=readFileSync(new URL('../web/study-atlas.html',import.meta.url),'utf8');
+const start=html.indexOf('function dayNumber('),end=html.indexOf('function updateQuantityMode()',start);
+assert.ok(start>=0&&end>start,'quantity functions must be present');
+const context=vm.createContext({Date,Number,Math});vm.runInContext(html.slice(start,end),context);
+test('total targets allocate all units over the inclusive date range',()=>{const q={mode:'total',start:'2026-11-04',total:50,daily:7};const values=Array.from({length:8},(_,i)=>context.quantityDailyTarget(q,'2026-11-11','2026-11-'+String(i+4).padStart(2,'0')));assert.deepEqual(values,[7,7,6,6,6,6,6,6]);assert.equal(values.reduce((a,b)=>a+b,0),50);assert.equal(context.quantityDailyTarget(q,'2026-11-11','2026-11-03'),0);assert.equal(context.quantityDailyTarget(q,'2026-11-11','2026-11-12'),0)});
+test('small totals produce zero-target days and existing daily tasks retain their target',()=>{const q={mode:'total',start:'2026-02-27',total:2,daily:1};assert.equal(context.quantityDailyTarget(q,'2026-03-02','2026-02-27'),1);assert.equal(context.quantityDailyTarget(q,'2026-03-02','2026-03-01'),0);assert.equal(context.quantityDailyTarget({start:'2026-02-27',daily:5},'2026-03-02','2026-03-01'),5)});
