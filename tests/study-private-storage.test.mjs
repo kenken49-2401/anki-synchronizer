@@ -1,0 +1,13 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readPrivateStudy,writePrivateStudy} from '../web/study-github-storage.mjs';
+const sha='a'.repeat(40),data={schema_version:1,studies:[],scores:[],tasks:[]};
+const metadata={private:true,full_name:'kenken49-2401/study-atlas-data'};
+const response=(body,status=200)=>({ok:status>=200&&status<300,status,json:async()=>body});
+const legacy={sha:'9c540539d6206131178fbff1d08ed36369c6da38'};
+const encoded=Buffer.from(JSON.stringify(data)).toString('base64');
+test('reads only after verifying the private repository',async()=>{let n=0;const fetch=async()=>++n===1?response(metadata):n===2?response(legacy):response({type:'file',encoding:'base64',sha,content:encoded});assert.deepEqual(await readPrivateStudy('token',fetch),{found:true,sha,data});});
+test('refuses public repository before writing data',async()=>{let n=0;await assert.rejects(writePrivateStudy('token',data,sha,async()=>{n++;return response({...metadata,private:false})}),/非公開/);assert.equal(n,1)});
+test('preserves conditional update and rejects conflicts',async()=>{let n=0;await assert.rejects(writePrivateStudy('token',data,sha,async(_url,opts)=>{if(++n===1)return response(metadata);if(n===2)return response(legacy);assert.equal(JSON.parse(opts.body).sha,sha);return response({},409)}),/409/);});
+test('does not interpret inaccessible repositories as empty',async()=>{await assert.rejects(readPrivateStudy('token',async()=>response({},404)),/404/)});
+test('stops when the old version writes new data',async()=>{let n=0;await assert.rejects(readPrivateStudy('token',async()=>++n===1?response(metadata):response({sha:'f'.repeat(40)})),/旧版/);assert.equal(n,2)});
