@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readPrivateStudy,writePrivateStudy} from '../web/study-private-storage.mjs';
+import {readPrivateStudy,writePrivateStudy} from '../web/study-github-storage.mjs';
 const sha='a'.repeat(40),data={schema_version:1,studies:[],scores:[],tasks:[]};
 const metadata={private:true,full_name:'kenken49-2401/study-atlas-data'};
 const response=(body,status=200)=>({ok:status>=200&&status<300,status,json:async()=>body});
