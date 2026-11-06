@@ -7,6 +7,9 @@ name: Publish study UI without Anki refresh
       - "web/study-atlas.html"
       - "web/study-cloud-ui.mjs"
       - "web/study-github-storage.mjs"
+      - "web/app.js"
+      - "web/vault.mjs"
+      - ".github/workflows/study-ui.yml"
 
 permissions:
   contents: read

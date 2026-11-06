@@ -134,11 +134,12 @@ export async function encryptData(value, masterKey) {
   }
 }
 
-export async function fetchPackage(url = "./snapshot.enc.json", limit = MAX_PACKAGE) {
+export async function fetchPackage(url = "./snapshot.enc.json", limit = MAX_PACKAGE, { signal } = {}) {
   const res = await fetch(url, {
     cache: "no-store",
     credentials: "omit",
     redirect: "error",
+    ...(signal ? { signal } : {}),
   });
   if (res.status === 404)
     throw new Error(
@@ -186,6 +187,53 @@ function validRaster(bytes, mime) {
       String.fromCharCode(...bytes.slice(8, 12)) === "WEBP"
     );
   return false;
+}
+
+// Only encrypted, content-addressed packages are persisted. The decrypted images stay in memory.
+const MEDIA_CACHE = 'anki-atlas-encrypted-media-v1';
+const MEDIA_CACHE_LIMIT = 24;
+async function openMediaCache() {
+  try { return globalThis.caches ? await globalThis.caches.open(MEDIA_CACHE) : null; } catch { return null; }
+}
+async function cacheMedia(cache, name, encrypted) {
+  if (!cache) return;
+  try {
+    await cache.put('./' + name, new Response(JSON.stringify(encrypted), {headers:{'Content-Type':'application/json'}}));
+    const keys = await cache.keys();
+    for (const key of keys.slice(0, Math.max(0, keys.length - MEDIA_CACHE_LIMIT))) await cache.delete(key);
+  } catch { /* Cache is optional: private browsing and full storage must still work. */ }
+}
+async function decodedMediaPackage(encrypted, masterKey) {
+  const part = await decryptData(encrypted, masterKey);
+  if (part?.schema_version !== 1 || !part.media || part.media_index || part.media_packages) throw new Error('画像データの形式が正しくありません。');
+  return createMediaURLs({media:part.media}, masterKey);
+}
+async function loadMediaPackage(name, masterKey) {
+  const cache = await openMediaCache();
+  if (cache) {
+    try {
+      const response = await cache.match('./' + name);
+      if (response) {
+        const text = await response.text();
+        if (text.length > 8 * 1024 * 1024) throw new Error('画像データが大きすぎます。');
+        return await decodedMediaPackage(JSON.parse(text), masterKey);
+      }
+    } catch { try { await cache.delete('./' + name); } catch {} }
+  }
+  let lastError;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    try {
+      const encrypted = await fetchPackage('./' + name, 8 * 1024 * 1024, {signal:controller.signal});
+      const loaded = await decodedMediaPackage(encrypted, masterKey);
+      void cacheMedia(cache, name, encrypted);
+      return loaded;
+    } catch (error) { lastError = error; }
+    finally { clearTimeout(timer); }
+    if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+  }
+  throw lastError || new Error('画像を読み込めません。');
 }
 
 export async function createMediaURLs(snapshot, masterKey) {
@@ -241,7 +289,27 @@ export async function createMediaURLs(snapshot, masterKey) {
       if (entries.length > 10000 || packages.some(name => typeof name !== "string" || !/^media-[a-f0-9]{64}\.enc\.json$/.test(name))) throw new Error();
       for (const [id, name] of entries) if (!/^[a-f0-9]{64}$/.test(id) || !allowed.has(name)) throw new Error();
       const index = new Map(entries), pending = new Map(), cache = new Map(), owners = new Map();
-      let closed = false, queue = Promise.resolve();
+      let closed = false, active = 0;
+      const waiting = [];
+      const withSlot = async (work) => {
+        if (active >= 2) await new Promise(resolve => waiting.push(resolve));
+        else active++;
+        try { return await work(); } finally {
+          const next = waiting.shift();
+          if (next) next(); else active--;
+        }
+      };
+      urls.isImageInUse = () => false;
+      urls.prune = (protectedName = null) => {
+        while (cache.size > 8) {
+          const oldest = [...cache.keys()].find(name => name !== protectedName && !(cache.get(name) || []).some(id => urls.isImageInUse(id, urls.get(id))));
+          if (!oldest) break;
+          for (const hash of cache.get(oldest)) if (owners.get(hash) === oldest) {
+            URL.revokeObjectURL(urls.get(hash)); urls.delete(hash); owners.delete(hash);
+          }
+          cache.delete(oldest);
+        }
+      };
       urls.close = () => { closed = true; cache.clear(); };
       urls.loadImage = async (id) => {
         if (closed || !index.has(id)) throw new Error("画像を読み込めません。");
@@ -251,11 +319,9 @@ export async function createMediaURLs(snapshot, masterKey) {
           return urls.get(id);
         }
         if (!pending.has(name)) {
-          const task = queue.then(async () => {
+          const task = withSlot(async () => {
             if (closed) throw new Error("画像の読み込みを中止しました。");
-            const part = await decryptData(await fetchPackage("./" + name, 8 * 1024 * 1024), masterKey);
-            if (part?.schema_version !== 1 || !part.media || part.media_index || part.media_packages) throw new Error("画像データの形式が正しくありません。");
-            const loaded = await createMediaURLs({media:part.media}, masterKey);
+            const loaded = await loadMediaPackage(name, masterKey);
             if (closed) { revokeMediaURLs(loaded); throw new Error("画像の読み込みを中止しました。"); }
             const ids = [];
             for (const [hash, url] of loaded) {
@@ -263,16 +329,9 @@ export async function createMediaURLs(snapshot, masterKey) {
               urls.set(hash, url); owners.set(hash, name); ids.push(hash);
             }
             cache.set(name, ids);
-            // At most eight small decrypted image packages remain in memory.
-            while (cache.size > 8) {
-              const oldest = cache.keys().next().value;
-              for (const hash of cache.get(oldest)) if (owners.get(hash) === oldest) {
-                URL.revokeObjectURL(urls.get(hash)); urls.delete(hash); owners.delete(hash);
-              }
-              cache.delete(oldest);
-            }
+            // Keep images used by the current page; other packages can be evicted.
+            urls.prune(name);
           });
-          queue = task.catch(() => {});
           pending.set(name, task);
           task.finally(() => pending.delete(name)).catch(() => {});
         }

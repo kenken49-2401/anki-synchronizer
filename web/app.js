@@ -874,6 +874,7 @@ function cardHTML(card, side) {
         node.remove();
         continue;
       }
+      node.dataset.mediaKey = src.slice(-64);
       const imageURL = state.mediaURLs.get(src.slice(-64));
       if (!imageURL && !state.mediaURLs.loadImage) {
         node.replaceWith(document.createTextNode("［画像未取得］"));
@@ -1231,37 +1232,44 @@ function bindMedia() {
   mediaObserver?.disconnect();
   const media = state.mediaURLs;
   if (!media.loadImage) return;
-  const load = (image) =>
-    media
-      .loadImage(image.dataset.mediaId)
-      .then((url) => {
-        if (image.isConnected && state.mediaURLs === media) {
-          image.src = url;
-          delete image.dataset.mediaId;
-        }
-      })
-      .catch(() => {
-        if (image.isConnected)
-          image.alt = "画像を読み込めません。表示を更新してください。";
-      });
-  if (!globalThis.IntersectionObserver) {
-    document.querySelectorAll("img[data-media-id]").forEach(load);
-    return;
-  }
-  mediaObserver = new IntersectionObserver(
-    (entries) => {
-      for (const entry of entries)
-        if (entry.isIntersecting) {
-          mediaObserver.unobserve(entry.target);
-          load(entry.target);
-        }
-    },
-    { rootMargin: "300px" },
-  );
-  document
-    .querySelectorAll("img[data-media-id]")
-    .forEach((image) => mediaObserver.observe(image));
+  media.isImageInUse = (id, url) => [...document.querySelectorAll('img')].some(image => image.dataset.mediaKey === id || image.dataset.mediaId === id || (url && image.getAttribute('src') === url));
+  media.prune?.();
+  const load = (image) => {
+    const id = image.dataset.mediaId;
+    if (!id) return;
+    image.nextElementSibling?.matches('[data-image-retry]') && image.nextElementSibling.remove();
+    image.alt = '画像を読み込み中…';
+    media.loadImage(id).then((url) => {
+      if (image.isConnected && state.mediaURLs === media) {
+        image.src = url;
+        image.alt = image.dataset.originalAlt || 'カードの図';
+        delete image.dataset.mediaId;
+      }
+    }).catch(() => {
+      if (!image.isConnected || state.mediaURLs !== media) return;
+      image.alt = '画像を読み込めませんでした。';
+      if (image.nextElementSibling?.matches('[data-image-retry]')) return;
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'button subtle small';
+      button.dataset.imageRetry = '';
+      button.textContent = '画像を再読み込み';
+      button.addEventListener('click', () => load(image));
+      image.after(button);
+    });
+  };
+  const images = document.querySelectorAll('img[data-media-id]');
+  images.forEach(image => { if (!image.hasAttribute('data-original-alt')) image.dataset.originalAlt = image.alt; });
+  if (!globalThis.IntersectionObserver) { images.forEach(load); return; }
+  mediaObserver = new IntersectionObserver((entries) => {
+    for (const entry of entries) if (entry.isIntersecting) {
+      mediaObserver.unobserve(entry.target);
+      load(entry.target);
+    }
+  }, { rootMargin: '500px' });
+  images.forEach(image => mediaObserver.observe(image));
 }
+
 function bindCards() {
   bindMedia();
   document.querySelectorAll("[data-note-tags]").forEach((form) =>
