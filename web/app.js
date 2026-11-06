@@ -1259,7 +1259,7 @@ function bindMedia() {
     });
   };
   const images = document.querySelectorAll('img[data-media-id]');
-  images.forEach(image => { image.dataset.originalAlt = image.alt; });
+  images.forEach(image => { if (!image.hasAttribute('data-original-alt')) image.dataset.originalAlt = image.alt; });
   if (!globalThis.IntersectionObserver) { images.forEach(load); return; }
   mediaObserver = new IntersectionObserver((entries) => {
     for (const entry of entries) if (entry.isIntersecting) {
