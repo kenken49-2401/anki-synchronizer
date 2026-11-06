@@ -223,7 +223,7 @@ async function loadMediaPackage(name, masterKey) {
   let lastError;
   for (let attempt = 0; attempt < 3; attempt++) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 12000);
+    const timer = setTimeout(() => controller.abort(), 8000);
     try {
       const encrypted = await fetchPackage('./' + name, 8 * 1024 * 1024, {signal:controller.signal});
       const loaded = await decodedMediaPackage(encrypted, masterKey);
