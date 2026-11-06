@@ -20,6 +20,8 @@ name: Publish encrypted Anki Pages
       - "pages-data/snapshot.enc.json"
       - "web/**"
       - "!web/study-atlas.html"
+      - "!web/app.js"
+      - "!web/vault.mjs"
       - "!web/study-cloud-ui.mjs"
       - "!web/study-github-storage.mjs"
       - "pages_site.py"
@@ -37,7 +39,6 @@ name: Publish encrypted Anki Pages
       - "connector.py"
       - "pyproject.toml"
       - "uv.lock"
-      - ".github/workflows/ankiweb-refresh.yml"
 
 permissions:
   contents: read
