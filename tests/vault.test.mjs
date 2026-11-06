@@ -167,3 +167,24 @@ test("image index defers downloads, bounds decrypted cache and closes on logout"
     await assert.rejects(createMediaURLs({...empty,media_packages:packages,media_index:{[ids[0]]:"https://evil.test/private"}},key));
   } finally {globalThis.fetch=original;}
 });
+
+test('media retries transient network failures and reuses only encrypted cached data', async () => {
+ const key=await importPassword(password),bytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jf4sAAAAASUVORK5CYII=','base64'),id=Buffer.from(await crypto.subtle.digest('SHA-256',bytes)).toString('hex'),name='media-'+'b'.repeat(64)+'.enc.json';
+ const payload=await encryptData({schema_version:1,media:{'secret-picture.png':{id,mime:'image/png',data:bytes.toString('base64')}}},key),stored=new Map(),cache={async match(k){return stored.get(k)?.clone()},async put(k,v){stored.set(k,v.clone())},async keys(){return [...stored.keys()]},async delete(k){return stored.delete(k)}};
+ const originalFetch=globalThis.fetch,originalCaches=globalThis.caches;let calls=0;globalThis.caches={open:async()=>cache};globalThis.fetch=async()=>{calls++;if(calls<3)throw Error('temporary network failure');return new Response(JSON.stringify(payload))};
+ try {const snap={...empty,media_packages:[name],media_index:{[id]:name}},urls=await createMediaURLs(snap,key);assert.ok((await urls.loadImage(id)).startsWith('blob:'));assert.equal(calls,3);for(let i=0;i<20&&!stored.size;i++)await new Promise(r=>setTimeout(r,10));assert.equal(stored.size,1);const text=await stored.get('./'+name).clone().text();assert.ok(!text.includes('secret-picture.png'));revokeMediaURLs(urls);globalThis.fetch=async()=>{throw Error('offline')};const second=await createMediaURLs(snap,key);assert.ok((await second.loadImage(id)).startsWith('blob:'));revokeMediaURLs(second)}finally{globalThis.fetch=originalFetch;if(originalCaches===undefined)delete globalThis.caches;else globalThis.caches=originalCaches}
+});
+
+test('visible images are not evicted when more than eight chunks are loaded', async () => {
+ const key=await importPassword(password),packages=[],index={},bodies=new Map(),ids=[],png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jf4sAAAAASUVORK5CYII=','base64');
+ for(let i=0;i<9;i++){const bytes=Buffer.concat([png,Buffer.from([i])]),id=Buffer.from(await crypto.subtle.digest('SHA-256',bytes)).toString('hex'),name='media-'+(i+20).toString(16).padStart(64,'0')+'.enc.json';packages.push(name);index[id]=name;ids.push(id);bodies.set('./'+name,await encryptData({schema_version:1,media:{[i+'.png']:{id,mime:'image/png',data:bytes.toString('base64')}}},key))}
+ const original=globalThis.fetch;globalThis.fetch=async url=>new Response(JSON.stringify(bodies.get(url)));
+ try{const urls=await createMediaURLs({...empty,media_packages:packages,media_index:index},key);urls.isImageInUse=id=>id===ids[0];for(const id of ids)await urls.loadImage(id);assert.equal(urls.size,8);assert.ok(urls.has(ids[0]));assert.equal(urls.has(ids[1]),false);revokeMediaURLs(urls)}finally{globalThis.fetch=original}
+});
+
+test('media downloads use at most two concurrent requests and coalesce same chunk', async () => {
+ const key=await importPassword(password),packages=[],index={},bodies=new Map(),ids=[],png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jf4sAAAAASUVORK5CYII=','base64');
+ for(let i=0;i<3;i++){const bytes=Buffer.concat([png,Buffer.from([i])]),id=Buffer.from(await crypto.subtle.digest('SHA-256',bytes)).toString('hex'),name='media-'+(i+50).toString(16).padStart(64,'0')+'.enc.json';packages.push(name);index[id]=name;ids.push(id);bodies.set('./'+name,await encryptData({schema_version:1,media:{[i+'.png']:{id,mime:'image/png',data:bytes.toString('base64')}}},key))}
+ const original=globalThis.fetch;let active=0,maxActive=0,calls=0;globalThis.fetch=async url=>{calls++;active++;maxActive=Math.max(maxActive,active);await new Promise(r=>setTimeout(r,60));active--;return new Response(JSON.stringify(bodies.get(url)))};
+ try{const urls=await createMediaURLs({...empty,media_packages:packages,media_index:index},key);const results=await Promise.all([urls.loadImage(ids[0]),urls.loadImage(ids[0]),urls.loadImage(ids[1]),urls.loadImage(ids[2])]);assert.equal(results[0],results[1]);assert.equal(calls,3);assert.equal(maxActive,2);revokeMediaURLs(urls)}finally{globalThis.fetch=original}
+});
