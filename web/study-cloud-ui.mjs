@@ -24,7 +24,7 @@ function askMergeChoices(conflicts,local,remote){return new Promise(resolve=>{co
 
 import {importPassword} from "./vault.mjs";
 import {readStudyBlob as readLegacyBlob} from "./study-github-storage.mjs";
-import {readPrivateStudy, readPrivateStudyBlob, writePrivateStudy} from "./study-private-storage.mjs";
+import {readPrivateStudy, readPrivateStudyBlob, writePrivateStudy} from "./study-github-storage.mjs";
 const readStudyData=(_config,token)=>readPrivateStudy(token);
 const writeStudyData=(_config,token,_key,data,sha)=>writePrivateStudy(token,data,sha);
 const config={owner:"kenken49-2401",repo:"anki-synchronizer",branch:"prototype/study-data",path:"study-data/study.enc.json"};
