@@ -404,14 +404,19 @@ function nearGoals(data, today) {
     if (!groups.has(key)) groups.set(key, {date:r.date,name:r.name.trim(),records:[]});
     groups.get(key).records.push(r);
   }
-  const exams = [...groups.values()].sort((a,b)=>b.date.localeCompare(a.date)||a.name.localeCompare(b.name,'ja')).slice(0,3);
+  const orderedExams = [...groups.values()].sort((a,b)=>b.date.localeCompare(a.date)||a.name.localeCompare(b.name,'ja'));
+  const exams = orderedExams.slice(0,3);
   const subjects = new Map();
-  for (const exam of exams) for (const r of exam.records) {
+  for (const exam of orderedExams) {
+   const candidates=exam.records.flatMap(record=>record.subject==='理科'?[record,...['物理','化学'].map(subject=>scienceSubjectView(record,subject)).filter(Boolean)]:[record]);
+   for (const r of candidates) {
     if (typeof r.subject !== 'string' || !r.subject.trim() || r.scoreComplete === false || typeof r.score !== 'number' || !Number.isFinite(r.score) || typeof r.max !== 'number' || !Number.isFinite(r.max) || r.max <= 0 || r.score < 0 || r.score > r.max) continue;
     // Duplicate subject records for one exam are ambiguous; do not double count.
-    if (exam.records.filter(x=>x.subject===r.subject).length !== 1) continue;
+    if (candidates.filter(x=>x.subject===r.subject).length !== 1) continue;
     if (!subjects.has(r.subject)) subjects.set(r.subject, []);
+    if (subjects.get(r.subject).length >= 3) continue;
     subjects.get(r.subject).push({date:exam.date,name:exam.name,score:r.score,max:r.max,rate:r.score/r.max});
+  }
   }
   const ranking=[...subjects].map(([subject,records])=>({subject,records,meanRate:records.reduce((a,x)=>a+x.rate,0)/records.length})).sort((a,b)=>a.meanRate-b.meanRate||a.subject.localeCompare(b.subject,'ja'));
   const start=new Date(today+'T00:00:00Z');start.setUTCDate(start.getUTCDate()-6);const since=start.toISOString().slice(0,10);
@@ -502,7 +507,7 @@ function renderNearGoals(){
  if(!list.childNodes.length)list.append(el('li','次の試験と目標点を設定して、ここから始めましょう。','near-empty'));
  const root=$('#nearGoalFacts');root.replaceChildren();const r=nearGoals(data,today),add=text=>root.append(el('p',text,'near-fact'));
  add(r.exams.length?'対象模試：'+r.exams.map(x=>x.date+' '+x.name).join(' / '):'日付のある模試がありません。');
- add('直近3回までの模試の科目別得点率を平均。未完成の得点・同一模試の重複科目は除外します。試験の難易度の差は考慮しません。');
+ add('日付のある模試について、教科ごとに直近3件までの完成した得点率を平均します。物理・化学は理科の大問から集計します。未完成・重複した記録は除外し、試験の難易度差は考慮しません。');
  const rankingGrid=el('div','','near-review-grid');for(const x of r.ranking){const card=el('div','','near-review-card');card.style.setProperty('--near-subject',studyColor(x.subject));card.append(el('h4',x.subject),el('strong',Number((x.meanRate*100).toFixed(1))+'%'),el('span','平均得点率 / '+x.records.length+'回','near-review-label'),el('p',x.records.map(v=>v.date+' '+v.name+' '+v.score+'/'+v.max+'点').join('、')+(x.change===null?'':' / 前回比 '+Number(x.change.toFixed(1))+'ポイント')));rankingGrid.append(card)}if(r.ranking.length)root.append(rankingGrid);
  const activeGoal=(data.nearGoals||[]).filter(g=>g.date>=today&&Object.keys(g.subjectTargets||{}).length).sort((a,b)=>a.date.localeCompare(b.date))[0],targetReview=nearGoalTargetGaps(r,activeGoal);root.append(el('h4','目標点との差から考える'));add(activeGoal?'比較する目標：'+activeGoal.name+'（'+activeGoal.date+'）。入力済みの教科別目標と比較します。':'比較する目標：「目標設定」の教科別目標点。');if(targetReview.gaps.length){const gapGrid=el('div','','near-gap-grid');for(const x of targetReview.gaps)gapGrid.append(nearGapCard(x.subject,x.score,x.target,x.date+' '+x.name,activeGoal?'目標：「'+activeGoal.name+'」の教科別目標':'目標：「目標設定」の教科別目標'));root.append(gapGrid);add(activeGoal?'死守・理想は「目標設定」から、今回の目標点と順序が合う設定だけを補足表示します。':'背景は達成した最も高いラインの色です。');const maxGap=targetReview.gaps[0].gap;if(maxGap>0){const subjects=targetReview.gaps.filter(x=>x.gap===maxGap).map(x=>x.subject).join('・');add('目標までの不足が最も大きい '+subjects+'（あと '+maxGap+'点）を優先候補に。直近の答案やタグ別の得点を確認し、点を伸ばせそうな問題から復習しましょう。')}else add('比較できる教科は、いずれも直近の得点が目標以上です。引き続き失点した問題を確認しましょう。');add('教科ごとに直近の記録を使用しています。異なる試験になることがあり、試験ごとの難易度は考慮していません。')}else add(activeGoal?'入力した教科の目標点と、同じ配点の模試の得点がそろうと比較できます。':'教科ごとの目標点と、同じ配点の模試の得点がそろうと比較できます。目標は「目標設定」で保存してください。');if(targetReview.mismatch.length)add('配点が異なるため比較していません：'+targetReview.mismatch.join('、'));
  const candidates=nearGoalSuggestions(data,r);root.append(el('h4','振り返る候補（記録から自動集計）'));if(candidates.topics.length){for(const t of candidates.topics){const evidence=t.results.map(x=>x.date+' '+x.name+' '+x.part+' '+Math.round(x.rate*100)+'%').join('、');const detail=el('details','','near-evidence'),summary=el('summary',t.subject+'・'+t.tag+'：平均 '+Number((t.mean*100).toFixed(1))+'%（'+t.results.length+'問）');summary.append(el('small','根拠を表示'));detail.append(summary,el('p','内訳：'+evidence+'。まず該当問題を解き直し、間違えた箇所を確認する候補です。'));root.append(detail)}}else if(r.ranking.length){const x=r.ranking[0];add(x.subject+'：対象模試で平均得点率が最も低い科目（'+Number((x.meanRate*100).toFixed(1))+'%、'+x.records.length+'件）。まず問題を解き直して、間違えた箇所を確認する候補です。')}else add('得点がそろうと、振り返る候補を表示します。');if(candidates.reviews.length)for(const x of candidates.reviews)add(x.subject+'・'+x.tag+'：過去問で要復習 '+x.count+'問。該当問題の復習を予定に入れる候補です。');add('候補は得点と復習状態の集計です。試験の難易度差や苦手の原因は判定していません。');
