@@ -23,6 +23,7 @@ import { renderAnkiInsights, bindAnkiInsights } from "./anki-insights.mjs";
 import { createNoteEditor } from "./note-editor.mjs";
 import { noteFingerprint } from "./note-edits.mjs";
 import { watchUpdates } from "./updates.mjs";
+import { observeCardMedia } from "./card-media.mjs";
 import { clearReviewGuards, configureReviewToken, loadHiddenReviews, removeReviewToken, requestAnkiSync, submitAutomaticReview } from "./review-auto.mjs";
 import {
   tagRequest,
@@ -1227,47 +1228,14 @@ function updateCards() {
   bindCards();
   bindTags();
 }
-let mediaObserver;
+let stopMediaObserver;
 function bindMedia() {
-  mediaObserver?.disconnect();
+  stopMediaObserver?.();
   const media = state.mediaURLs;
   if (!media.loadImage) return;
   media.isImageInUse = (id, url) => [...document.querySelectorAll('img')].some(image => image.dataset.mediaKey === id || image.dataset.mediaId === id || (url && image.getAttribute('src') === url));
   media.prune?.();
-  const load = (image) => {
-    const id = image.dataset.mediaId;
-    if (!id) return;
-    image.nextElementSibling?.matches('[data-image-retry]') && image.nextElementSibling.remove();
-    image.alt = '画像を読み込み中…';
-    media.loadImage(id).then((url) => {
-      if (image.isConnected && state.mediaURLs === media) {
-        image.src = url;
-        image.alt = image.dataset.originalAlt || 'カードの図';
-        delete image.dataset.mediaId;
-      }
-    }).catch(() => {
-      if (!image.isConnected || state.mediaURLs !== media) return;
-      image.alt = '画像を読み込めませんでした。';
-      if (image.nextElementSibling?.matches('[data-image-retry]')) return;
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'button subtle small';
-      button.dataset.imageRetry = '';
-      button.textContent = '画像を再読み込み';
-      button.addEventListener('click', () => load(image));
-      image.after(button);
-    });
-  };
-  const images = document.querySelectorAll('img[data-media-id]');
-  images.forEach(image => { if (!image.hasAttribute('data-original-alt')) image.dataset.originalAlt = image.alt; });
-  if (!globalThis.IntersectionObserver) { images.forEach(load); return; }
-  mediaObserver = new IntersectionObserver((entries) => {
-    for (const entry of entries) if (entry.isIntersecting) {
-      mediaObserver.unobserve(entry.target);
-      load(entry.target);
-    }
-  }, { rootMargin: '500px' });
-  images.forEach(image => mediaObserver.observe(image));
+  stopMediaObserver = observeCardMedia(document, media, () => state.mediaURLs === media);
 }
 
 function bindCards() {

@@ -29,7 +29,7 @@ ROOT = Path(__file__).resolve().parent
 PACKAGE_NAME = "snapshot.enc.json"
 ASSETS = {"study-atlas.html", "study-cloud-ui.mjs", "study-github-storage.mjs", "index.html", "app.js", "styles.css", "stats.mjs", "vault.mjs", "tags.mjs", "tag-queue.mjs", "updates.mjs",
           "device-session.mjs", "anki-insights.mjs", "anki-insights.css",
-          "note-edits.mjs", "note-editor.mjs", "review-auto.mjs",
+          "note-edits.mjs", "note-editor.mjs", "review-auto.mjs", "card-media.mjs",
           "rich-note-field.mjs",
           "manifest.webmanifest", "icon-180.png", "icon-192.png", "icon-512.png"}
 BUILD_FILE = "release.json"
