@@ -14,7 +14,9 @@ function decode(value, size) {
     !/^[A-Za-z0-9+/]*={0,2}$/.test(value)
   )
     throw new Error("暗号化ファイルの形式が正しくありません。");
-  const bytes = Uint8Array.from(atob(value), (c) => c.charCodeAt(0));
+  const raw = atob(value);
+  const bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
   if (size !== undefined && bytes.length !== size)
     throw new Error("暗号化ファイルの形式が正しくありません。");
   return bytes;
