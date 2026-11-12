@@ -1,0 +1,129 @@
+/* Appearance is independent of study records, credentials and cloud backups. */
+.theme-setting { margin-bottom: 20px; }
+.theme-setting select { min-width: 160px; }
+.theme-setting [data-theme-status] { margin-top: 10px; font-size: 12px; }
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #090b0d;
+  --ink: #e3e9e6;
+  --muted: #a5b1ab;
+  --line: #303934;
+  --border: #303934;
+  --green: #89cda2;
+  --purple: #bba0f5;
+  --purple-dark: #cbb5ff;
+  --purple-light: #2a2238;
+  --teal: #74cdb8;
+  --surface: #14181b;
+  --raised: #1d2425;
+  --soft: #222c28;
+  background: var(--bg);
+  color: var(--ink);
+}
+:root[data-theme="dark"] body { background: var(--bg); color: var(--ink); }
+:root[data-theme="dark"] :is(.sidebar,.topbar,.panel,.metric,.study-card,.tag-sidebar,.empty-state,.no-results,.login-layout,.deck-picker,.deck-picker-menu,dialog) {
+  background: var(--surface); border-color: var(--line); color: var(--ink); box-shadow: none;
+}
+:root[data-theme="dark"] :is(.brand,.topbar strong,.breadcrumb strong,h1,h2,h3,.card-question,.answer-content .rich-card,.daily-table tbody th,.connection-info dd,.empty-state h2,.setup-steps h3,.login-story h1) { color: var(--ink); }
+:root[data-theme="dark"] :is(.muted,small,label,caption,.workspace,.workspace-label,.topbar,.intro p,.breadcrumb,.private-label,.page-heading p,.metric-top,.metric>p,.panel-title p,.chart,.chart-foot,.activity-summary,.heatmap-legend,.tag-row-name small,.sidebar-note p,.card-meta,.card-accuracy span,.collection-heading h2>span,.folder-controls,.pagination,.data-note,.daily-table td,.connection-info dt,.setting-label,.setup-steps p,.empty-state p,.login-story p,.login-story>small,.login-box label,.login-divider,.login-note,.loading-screen,.sync-strip,footer,.anki-calendar-status,.deck-picker>summary) { color: var(--muted); }
+:root[data-theme="dark"] :is(input,select,textarea,.search-input,.tag-input-row input,.rich-note-content) { background: #0e1215; color: var(--ink); border-color: #46534c; box-shadow: none; }
+:root[data-theme="dark"] input::placeholder { color: #8c9a93; }
+:root[data-theme="dark"] :is(input[readonly],.card-workspace,.card-toolbar,.answer-content,.tag-editor,.info-box,.command,.note-edit-diff pre,.rich-note-toolbar,.rich-note-preview,.anki-empty,.anki-insights thead,.daily-table thead,.learning-note,.login-story,.sidebar-note,.story-cards>div) { background: var(--raised); color: var(--ink); border-color: var(--line); }
+:root[data-theme="dark"] :is(.answer-content p,.answer-content dd,.answer-content details,.answer-content .review-hint,.learning-note h2,.learning-note p,.story-cards b,.story-cards span,.tag-editor summary,.pending-tags,.sync-request-status) { color: #b9c7bf; }
+:root[data-theme="dark"] :is(.subtle,.review-rating,.rich-note-toolbar button) { background: var(--raised); color: var(--ink); border-color: #46534c; }
+:root[data-theme="dark"] :is(.subtle:hover,.review-rating:hover,.rich-note-toolbar button:hover,.tag-row:hover,.tag-filter:hover,.nav-item:hover) { background: #2d3832; color: var(--ink); }
+:root[data-theme="dark"] :is(.nav-item,.tag-filter) { color: var(--muted); }
+:root[data-theme="dark"] :is(.nav-item.active,.tag-filter.selected,.avatar,.nav-item small,.chip,.pill,.card-tags button,.today-label,.deck-group-heading,.rich-note-token) { background: #292338; color: #d0b7ff; border-color: #423b52; }
+:root[data-theme="dark"] :is(.primary,.learning-note .button) { background: #7654be; color: #fff; }
+:root[data-theme="dark"] .primary:hover { background: #8965cf; }
+:root[data-theme="dark"] .brand-mark { background: #7654be; }
+:root[data-theme="dark"] :is(.connected,.teal,.tag-color-1) { background: #18382f; color: #8bd8bd; }
+:root[data-theme="dark"] :is(.demo-notice,.demo-pill,.orange,.tag-color-2) { background: #382e1d; color: #e5c38a; border-color: #615132; }
+:root[data-theme="dark"] .demo-notice a { color: #f0cf96; }
+:root[data-theme="dark"] :is(.pink,.tag-color-3) { background: #3b2430; color: #ecadc7; }
+:root[data-theme="dark"] :is(.purple,.tag-color-0) { background: #30253f; color: #c6a7f8; }
+:root[data-theme="dark"] :is(.heat-cell,.anki-level-0,.tag-progress,.time-bar) { background: #28262f; }
+:root[data-theme="dark"] :is(.level-1,.anki-level-1) { background: #49395f; }
+:root[data-theme="dark"] :is(.level-2,.anki-level-2) { background: #725494; }
+:root[data-theme="dark"] :is(.level-3,.anki-level-3) { background: #a17ace; }
+:root[data-theme="dark"] :is(.level-4,.anki-level-4) { background: #cba5ff; }
+:root[data-theme="dark"] .chart-bar { background: #76579d; }
+:root[data-theme="dark"] .chart-bar.today { background: #c4a2f6; }
+:root[data-theme="dark"] .anki-chart text { fill: #bbc5c0; }
+:root[data-theme="dark"] .anki-gridline { stroke: var(--line); }
+:root[data-theme="dark"] .anki-cumulative { stroke: #78cfb4; }
+:root[data-theme="dark"] .anki-toggle button { color: #c6b5dc; }
+:root[data-theme="dark"] .anki-toggle button[aria-pressed="true"] { background: #41324f; color: #eee3ff; }
+:root[data-theme="dark"] .card-accuracy strong { color: #8cd2b4; }
+:root[data-theme="dark"] :is(.card-accuracy strong.needs-practice,.review-rating[data-review-rating="hard"]) { color: #e6bd7c; }
+:root[data-theme="dark"] .review-rating[data-review-rating="again"] { color: #f19da2; }
+:root[data-theme="dark"] .review-rating[data-review-rating="good"] { color: #9acff4; }
+:root[data-theme="dark"] .review-rating[data-review-rating="easy"] { color: #88d1bb; }
+:root[data-theme="dark"] :is(.error,.save-error) { color: #ffb6b0; background: #392020; border-color: #875048; }
+:root[data-theme="dark"] :is(th,td,li,.tag-row,.tag-sync-panel,.note-editor-panel,.rich-note-field) { border-color: var(--line); }
+:root[data-theme="dark"] :is(button,a,input,select,textarea,summary):focus-visible { outline-color: #bdd7ff; }
+
+/* Study Atlas: keep subject accents while replacing all pale card surfaces. */
+:root[data-theme="dark"] :is(.content>section,.exam-card,.tag-options,.tag-picker summary,.sync-state,.study-legend-item,.sidebar-bottom,#studyList li,#taskList>ul>li,#tagCatalog .catalog-group) { background: var(--surface); color: var(--ink); border-color: var(--line); box-shadow: none; }
+:root[data-theme="dark"] :is(#study h3,#scores h3,#tasks h3,#paper h3,#tag-settings h3,#data h3,#tagCatalog .catalog-group strong,#studyList .study-day-heading,#taskList .quantity-card h4) { color: var(--ink); }
+:root[data-theme="dark"] :is(#studyForm,#taskForm,#paperForm,#paperEditForm,#tagForm,#scoreForm,#legacyScoreForm,.paper-search,.study-history-controls,.score-tabs,.exam-format-switch,#data>h3,.near-evidence,#taskList .quantity-card,#taskList>ul>li:has(.done),#taskList>ul.today-task-list>li) { background: var(--raised); color: var(--ink); border-color: var(--line); }
+:root[data-theme="dark"] :is(#studyChart,#totalScoreChart,#tagChart,#scoreChart,.quantity-daily-chart) { background: #111719; border-color: var(--line); }
+:root[data-theme="dark"] :is(th,.table-wrap caption,#paperTable th[scope=row],.exam-card .exam-total th,.exam-card .exam-total td,#goalsTable tfoot th,#goalsTable tfoot td,#questionInputs tr>:first-child,#goalsTable tr>:first-child,#paperTable tr>:first-child,#scoreTable thead tr>:first-child,#scoreTable td[rowspan]:first-child) { background: var(--raised); color: #c1d0c7; border-color: var(--line); box-shadow: none; }
+:root[data-theme="dark"] :is(#questionInputs thead th,#questionInputs tbody th,#goalsTable tbody th,.exam-card h4,#tagCatalog .tag-chip) { background: color-mix(in srgb,var(--subject-color) 16%,#14181b); color: #d4e1d9; }
+:root[data-theme="dark"] :is(#scoreTable tbody tr:hover,#tagTable tbody tr:hover) { background: #222d27; }
+:root[data-theme="dark"] :is(.score-tabs button,.task-expand::after,.tag-remove,.nav-icon) { color: #a9c7b5; }
+:root[data-theme="dark"] :is(nav a,nav a:hover) { color: #b2c1b9; background: var(--surface); border-color: var(--line); }
+:root[data-theme="dark"] :is(nav a[aria-current=page],.score-tabs button[aria-selected=true],.task-expand[aria-expanded=true]) { background: #24392d; color: #b3ebc5; border-color: #43664f; }
+:root[data-theme="dark"] nav a[aria-current=page] .nav-icon { color: #a4e4ba; }
+:root[data-theme="dark"] .content :is(a,.status) { color: #91d7ad; }
+:root[data-theme="dark"] .brand { color: var(--ink); }
+:root[data-theme="dark"] :is(.intro p,#data>p,.tag-options label,.subject-tags,.paper-reference,.study-history-status,#studyList .study-day-heading span,.exam-goal-legend,.quantity-note,.near-evidence summary) { color: #b1c1b7; }
+:root[data-theme="dark"] .content .metric { background: #192a20; color: #a2c3af; border-color: #304a3a; }
+:root[data-theme="dark"] .content .metric strong { color: #a7dfbb; }
+:root[data-theme="dark"] .content .metric:nth-child(2) { background: #1a2633; color: #adc2da; border-color: #34475b; }
+:root[data-theme="dark"] .content .metric:nth-child(2) strong { color: #b4d1f4; }
+:root[data-theme="dark"] .content .metric:nth-child(3) { background: #30271b; color: #d0b899; border-color: #514332; }
+:root[data-theme="dark"] .content .metric:nth-child(3) strong { color: #edd1a1; }
+:root[data-theme="dark"] .content button:not(.secondary):not(.danger):not(.tag-remove):not(.task-expand):not([role=tab]) { background: #397a50; color: #fff; }
+:root[data-theme="dark"] :is(button.secondary,.content .button) { background: #26352c; color: #c0e4cc; border-color: #48604f; }
+:root[data-theme="dark"] button.secondary:hover { background: #344b3c; }
+:root[data-theme="dark"] .content button.danger { background: #3c2422; color: #ffb6ab; }
+:root[data-theme="dark"] :is(.tag-chip,#paperSummary,.legend-done,.paper-state-done,.exam-card .score-above) { background: #1e3c2b; color: #afe0be; border-color: #3d6850; }
+:root[data-theme="dark"] :is(.legend-new,.paper-state-new,.task-priority) { background: #29312c; color: #c1cdc5; border-color: #4a5a50; }
+:root[data-theme="dark"] :is(.legend-review,.paper-state-review,.exam-card tbody tr td.goal-floor,.exam-goal-key.goal-floor,#goalsTable thead th:nth-child(3)) { background: #43371d; color: #f0d396; border-color: #6c5b32; }
+:root[data-theme="dark"] :is(.exam-card tbody tr td.goal-target,.exam-goal-key.goal-target,#goalsTable thead th:nth-child(4)) { background: #1c3c29; color: #aee3bf; }
+:root[data-theme="dark"] :is(.exam-card tbody tr td.goal-ideal,.exam-goal-key.goal-ideal,#goalsTable thead th:nth-child(5)) { background: #20394d; color: #b5d8fa; }
+:root[data-theme="dark"] :is(.task-priority[data-priority=high],.exam-card .score-below) { background: #462827; color: #ffc1b6; border-color: #7a4b43; }
+:root[data-theme="dark"] .task-priority[data-priority=low] { background: #25374b; color: #b8d5f3; border-color: #4d6681; }
+:root[data-theme="dark"] #taskList>ul>li[data-priority=high] { background: #261c1b; }
+:root[data-theme="dark"] #taskList>ul>li[data-priority=low] { background: #1b222c; }
+:root[data-theme="dark"] :is(#scores[data-exam-format=common],#goals[data-exam-format=common]) { background: #131c24; }
+:root[data-theme="dark"] section[data-exam-format=common] .exam-format-switch { background: #1c2c39; }
+:root[data-theme="dark"] section[data-exam-format=common] h2 { color: #acd4f1; }
+:root[data-theme="dark"] section[data-exam-format=common] .score-tabs button[aria-selected=true] { background: #263f54; color: #c2e4ff; }
+:root[data-theme="dark"] #near-goals :is(.near-form,.near-total-input,.near-subject-input,.near-goal-card,.near-goal-subject,.near-empty,.near-fact,.near-review-card,.near-gap-card,.near-gap-level) { background: var(--raised); color: var(--ink); border-color: var(--line); }
+:root[data-theme="dark"] #near-goals :is(h3,h4,h5,strong,.near-subject-input span,.near-goal-subject span,.near-note-text,.near-gap-score,.near-gap-difference,.near-recent-exam,.near-recent-score) { color: #d4e2d9; }
+:root[data-theme="dark"] #near-goals :is(p,small,.near-form-hint,.near-goal-date,.near-gap-meta,.near-review-label,.near-recent-date,.near-recent-source-heading) { color: #abbfb1; }
+:root[data-theme="dark"] #near-goals .near-countdown { background: #24432f; color: #b5e8c6; }
+:root[data-theme="dark"] #near-goals :is(.near-gap-card[data-level=floor],.near-gap-level[data-key=floor]) { background: #3c321e; color: #ebd299; }
+:root[data-theme="dark"] #near-goals :is(.near-gap-card[data-level=target],.near-gap-level[data-key=target]) { background: #1d3628; color: #b4e3c3; }
+:root[data-theme="dark"] #near-goals :is(.near-gap-card[data-level=ideal],.near-gap-level[data-key=ideal]) { background: #203448; color: #bbd9f5; }
+:root[data-theme="dark"] .chart-tooltip { background: #26332b; color: #eef6f0; border: 1px solid #60766a; }
+/* Difficulty badges retain their established colors and dark lettering. */
+:root[data-theme="dark"] .difficulty-badge { color: #18231c; }
+
+/* ID-scoped original forms and evidence cards need equally scoped overrides. */
+:root[data-theme="dark"] #near-goals textarea { background: #0e1215; color: var(--ink); border-color: #46534c; }
+:root[data-theme="dark"] #near-goals #nearGoalFacts .near-fact { background: var(--raised); color: #b9cdbf; border-color: var(--line); }
+:root[data-theme="dark"] #near-goals #nearGoalFacts .near-review-card h4 { color: #d4e2d9; }
+:root[data-theme="dark"] #near-goals :is(.near-subject-input,.near-review-card) { border-top-color: var(--near-subject); }
+:root[data-theme="dark"] #near-goals .near-goal-subject { border-left-color: var(--near-subject); }
+:root[data-theme="dark"] :is(.exam-card,#tagCatalog .catalog-group) { border-top-color: var(--subject-color); }
+:root[data-theme="dark"] .content .exam-format-switch button[aria-pressed="true"] { background: #315f42; color: #daf5e3; border-color: #80b78f; box-shadow: inset 0 0 0 1px #80b78f; }
+:root[data-theme="dark"] .content .exam-format-switch button[aria-pressed="false"] { background: #202a25; color: #acbcb2; border-color: #46574c; }
+:root[data-theme="dark"] :is(.answer-toggle,.answer-content>span,.card-index) { color: #94c9ed; }
+:root[data-theme="dark"] .nav-item.active { background: #30263f; color: #d0b7ff; }
+:root[data-theme="dark"] #near-goals input[readonly] { background: #1d2922; color: #c5e5cf; }
+:root[data-theme="dark"] .paper-cell.paper-solved { background: #1e3c2b; }
+:root[data-theme="dark"] .paper-cell.paper-review { background: #412827; }
