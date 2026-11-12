@@ -11,7 +11,7 @@ activeExamFormat='common';
 assert.equal(formatSubjects().length,9);
 assert.equal(formatTotal(),1000);
 assert.equal(inputPresets().国語.reduce((n,x)=>n+x[1],0),200);
-assert.equal(inputPresets().数学3C[0][1],100);
+assert.equal(inputPresets().数学2BC[0][1],100);
 assert.equal(scoreGoalFor('英語').target,70);
 assert.equal(scoreGoalFor('英語R','common').target,80);
 for(const subject of formatSubjects())data.commonScoreGoals[subject]={target:commonGoalMax[subject]};
