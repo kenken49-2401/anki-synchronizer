@@ -4,8 +4,8 @@ const source=readFileSync(new URL('../web/study-atlas.html',import.meta.url),'ut
 const line=key=>{const i=source.indexOf(key);assert(i>=0,key);return source.slice(i,source.indexOf('\n',i))};
 const block=(a,b)=>source.slice(source.indexOf(a),source.indexOf(b,source.indexOf(a)));
 const helpers=block('const goalMax=','const goalLabels=').replace(/function setExamFormat[\s\S]*/,'');
-const code=helpers+'\n'+['const presets=','function sumDecimal(','function completeSum(','const complete=','function questionTotals(','function scienceSubjectView(','function scoreGoalFor(','function goalTotalFor(','function totalExamPoints(','function validCommonGoals(','const validNearGoalDate=','function validNearGoalSubjects(','const valid=x=>'].map(line).join('\n')+'\n'+block('function completeExamSets(','function deleteButton(')+'\n'+block('function nearGoals(data','function nearGoalTargetGaps(');
-new Function('assert',`let data={scoreGoals:{英語:{target:70}},commonScoreGoals:{英語R:{target:80}}};${code}
+const code=helpers+'\n'+['const presets=','function sumDecimal(','function completeSum(','const complete=','function questionTotals(','function scienceSubjectView(','function scoreGoalFor(','function goalTotalFor(','const resultSubjects=','const resultTotal=','function totalExamPoints(','function validCommonGoals(','const validNearGoalDate=','function validNearGoalSubjects(','const valid=x=>'].map(line).join('\n')+'\n'+block('function completeExamSets(','function deleteButton(')+'\n'+block('function nearGoals(data','function nearGoalTargetGaps(');
+new Function('assert',`const $=id=>id==='#scoreForm'?{elements:{kind:{value:'模試'}}}:{value:'standard'};let data={scoreGoals:{英語:{target:70}},commonScoreGoals:{英語R:{target:80}}};${code}
 assert.equal(examFormatOf({}),'secondary');
 activeExamFormat='common';
 assert.equal(formatSubjects().length,9);
