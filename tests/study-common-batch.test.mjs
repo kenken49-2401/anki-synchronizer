@@ -1,0 +1,21 @@
+import {readFileSync} from 'node:fs';
+import assert from 'node:assert/strict';
+const source=readFileSync(new URL('../web/study-atlas.html',import.meta.url),'utf8');
+const line=key=>{const i=source.indexOf(key);assert(i>=0,key);return source.slice(i,source.indexOf('\n',i))};
+const code=['const commonSubjectAliases=','const commonSubject=','const commonRecordView=','function commonGoalView(','function conflictingCommonGoals(','const commonGoalMax=','const examFormatOf=','function editFingerprint(','function sumDecimal(','function readCommonBatch('].map(line).join('\n');
+new Function('assert',`let counter=0;const id=()=>String(++counter);${code}
+assert.equal(commonSubject('数学1A2B'),'数学1A');
+assert.equal(commonSubject('数学3C'),'数学2BC');
+const original={id:'old',examFormat:'common',subject:'数学1A2B'};
+assert.equal(commonRecordView(original).subject,'数学1A');assert.equal(original.subject,'数学1A2B');
+assert.equal(commonGoalView({数学1A2B:{target:70}}).数学1A.target,70);
+assert(!conflictingCommonGoals({数学1A2B:{target:70},数学1A:{target:70}}));
+assert(conflictingCommonGoals({数学1A2B:{target:70},数学1A:{target:80}}));
+const form={elements:{date:{value:'2026-11-12'},kind:{value:'模試'},name:{value:'テスト'}}};
+const row=(subject,values)=>({dataset:{subject,name:'合計',max:'100'},querySelector:q=>({value:String(values[/data-field="([^\"]+)"/.exec(q)[1]]??'')})});
+const old={...original,custom:'keep',questions:[{name:'合計',max:100,score:70,average:null,selfscore:null,feeling:null,tags:['既存']}],averageSource:'calculated'};
+const result=readCommonBatch(form,[row('数学1A',{score:0}),row('情報',{})],[old]);
+assert.equal(result.length,1);assert.equal(result[0].id,'old');assert.equal(result[0].subject,'数学1A');assert.equal(result[0].score,0);assert.equal(result[0].custom,'keep');assert.deepEqual(result[0].questions[0].tags,['既存']);
+assert.throws(()=>readCommonBatch(form,[row('数学1A',{score:101})],[]));
+assert.equal(readCommonBatch(form,[row('情報',{})],[]).length,0);
+`)(assert);
