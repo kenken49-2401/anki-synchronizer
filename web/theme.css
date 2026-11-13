@@ -127,3 +127,12 @@
 :root[data-theme="dark"] #near-goals input[readonly] { background: #1d2922; color: #c5e5cf; }
 :root[data-theme="dark"] .paper-cell.paper-solved { background: #1e3c2b; }
 :root[data-theme="dark"] .paper-cell.paper-review { background: #412827; }
+
+/* Progress summaries and today's task controls have their own pale surfaces. */
+:root[data-theme="dark"] #paperStats .difficulty-stats { background: var(--raised); color: var(--ink); border-color: var(--line); }
+:root[data-theme="dark"] #paperStats .difficulty-stat { background: var(--surface); border-color: var(--line); }
+:root[data-theme="dark"] #paperStats .difficulty-stat strong { color: #afe0be; }
+:root[data-theme="dark"] #paperStats .difficulty-stat small { color: var(--muted); }
+:root[data-theme="dark"] #taskList .today-task-choice { background: #24392d; color: #c0e4cc; }
+:root[data-theme="dark"] #taskList>ul.today-task-list>li { background: var(--raised); color: var(--ink); border-color: var(--line); }
+:root[data-theme="dark"] #taskList .today-task-check { color: var(--ink); }
