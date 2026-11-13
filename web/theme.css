@@ -136,3 +136,11 @@
 :root[data-theme="dark"] #taskList .today-task-choice { background: #24392d; color: #c0e4cc; }
 :root[data-theme="dark"] #taskList>ul.today-task-list>li { background: var(--raised); color: var(--ink); border-color: var(--line); }
 :root[data-theme="dark"] #taskList .today-task-check { color: var(--ink); }
+
+/* Task achievement remains readable on every task surface. */
+:root[data-theme="dark"] .task-progress { color: #bed1c4; }
+:root[data-theme="dark"] .task-progress-value { color: #afe0be; }
+:root[data-theme="dark"] .task-progress-track { background: #3b4d41; }
+:root[data-theme="dark"] .task-progress-fill { background: #7dc594; }
+:root[data-theme="dark"] .task-progress-note { color: #b1c1b7; }
+:root[data-theme="dark"] .task-progress-unknown .task-progress-track { background: transparent; border-color: #7f9789; }
