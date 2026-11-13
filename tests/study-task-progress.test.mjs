@@ -34,3 +34,29 @@ test('progress caps excess at 100% and avoids rounding unfinished work to comple
  assert.equal(progress({date:'2026-10-31',quantity:{start:'2026-11-01',daily:5}}).percent,null);
  assert.equal(progress({quantity:{...quantity,total:0}}).percent,null);
 });
+
+test('regular and completed tasks without quantity goals keep their original row',()=>{
+ const row={querySelector(){assert.fail('a task without a quantity goal must not add a progress summary')}};
+ for(const done of [false,true])context.addTaskProgress(row,{done});
+});
+
+test('today tasks show progress only when a quantity goal is configured',()=>{
+ const node=()=>({children:[],dataset:{},append(...children){this.children.push(...children)},setAttribute(){}});
+ const shown=[],today='2026-11-13',root=node();
+ const viewContext=vm.createContext({
+  el:node,document:{createElement:node,createTextNode:text=>text},
+  compareTaskPriority:()=>0,taskPriority:()=> 'medium',taskPriorityBadge:node,
+  taskProgressView:task=>{shown.push(task.title);return {progress:true}},
+ });
+ vm.runInContext(html.slice(html.indexOf('function renderTodayTaskPlan('),html.indexOf('function addTodayTaskChoice(')),viewContext);
+ viewContext.renderTodayTaskPlan(root,[
+  {title:'目標なし',todayPlan:{date:today}},
+  {title:'目標あり',quantity,todayPlan:{date:today}},
+  {title:'完了済み',done:true,todayPlan:{date:today}},
+ ],today);
+ assert.deepEqual(shown,['目標あり']);
+ const rows=root.children[1].children;
+ assert.equal(rows.length,2);
+ assert.equal(rows[0].children.some(child=>child.progress),false);
+ assert.equal(rows[1].children.some(child=>child.progress),true);
+});
