@@ -68,10 +68,10 @@
 :root[data-theme="dark"] :is(.content>section,.exam-card,.tag-options,.tag-picker summary,.sync-state,.study-legend-item,.sidebar-bottom,#studyList li,#taskList>ul>li,#tagCatalog .catalog-group) { background: var(--surface); color: var(--ink); border-color: var(--line); box-shadow: none; }
 :root[data-theme="dark"] :is(#study h3,#scores h3,#tasks h3,#paper h3,#tag-settings h3,#data h3,#tagCatalog .catalog-group strong,#studyList .study-day-heading,#taskList .quantity-card h4) { color: var(--ink); }
 :root[data-theme="dark"] :is(#studyForm,#taskForm,#paperForm,#paperEditForm,#tagForm,#scoreForm,#legacyScoreForm,.paper-search,.study-history-controls,.score-tabs,.exam-format-switch,#data>h3,.near-evidence,#taskList .quantity-card,#taskList>ul>li:has(.done),#taskList>ul.today-task-list>li) { background: var(--raised); color: var(--ink); border-color: var(--line); }
-:root[data-theme="dark"] :is(#studyChart,#totalScoreChart,#tagChart,#scoreChart,.quantity-daily-chart) { background: #111719; border-color: var(--line); }
+:root[data-theme="dark"] :is(#studyChart,#totalScoreChart,#tagChart,#scoreChart,#questionTrendChart,.quantity-daily-chart) { background: #111719; border-color: var(--line); }
 :root[data-theme="dark"] :is(th,.table-wrap caption,#paperTable th[scope=row],.exam-card .exam-total th,.exam-card .exam-total td,#goalsTable tfoot th,#goalsTable tfoot td,#questionInputs tr>:first-child,#goalsTable tr>:first-child,#paperTable tr>:first-child,#scoreTable thead tr>:first-child,#scoreTable td[rowspan]:first-child) { background: var(--raised); color: #c1d0c7; border-color: var(--line); box-shadow: none; }
 :root[data-theme="dark"] :is(#questionInputs thead th,#questionInputs tbody th,#goalsTable tbody th,.exam-card h4,#tagCatalog .tag-chip) { background: color-mix(in srgb,var(--subject-color) 16%,#14181b); color: #d4e1d9; }
-:root[data-theme="dark"] :is(#scoreTable tbody tr:hover,#tagTable tbody tr:hover) { background: #222d27; }
+:root[data-theme="dark"] :is(#scoreTable tbody tr:hover,#tagTable tbody tr:hover,#questionTrendTable tbody tr:hover) { background: #222d27; }
 :root[data-theme="dark"] :is(.score-tabs button,.task-expand::after,.tag-remove,.nav-icon) { color: #a9c7b5; }
 :root[data-theme="dark"] :is(nav a,nav a:hover) { color: #b2c1b9; background: var(--surface); border-color: var(--line); }
 :root[data-theme="dark"] :is(nav a[aria-current=page],.score-tabs button[aria-selected=true],.task-expand[aria-expanded=true]) { background: #24392d; color: #b3ebc5; border-color: #43664f; }
