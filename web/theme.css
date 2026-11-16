@@ -144,3 +144,13 @@
 :root[data-theme="dark"] .task-progress-fill { background: #7dc594; }
 :root[data-theme="dark"] .task-progress-note { color: #b1c1b7; }
 :root[data-theme="dark"] .task-progress-unknown .task-progress-track { background: transparent; border-color: #7f9789; }
+
+/* Score goal cards share the near-term goal surfaces and three goal colors. */
+:root[data-theme="dark"] #goals #goalsForm,:root[data-theme="dark"] #goals :is(.goals-subject-card,.goals-total){background:var(--raised);border-color:var(--line);color:var(--ink)}
+:root[data-theme="dark"] #goals .goals-subject-card{border-top-color:var(--subject-color)}
+:root[data-theme="dark"] #goals :is(.goals-kicker,.goals-subject-card legend,.goals-total legend){color:#d4e2d9}
+:root[data-theme="dark"] #goals :is(p,small,.goals-form-hint){color:#abbfb1}
+:root[data-theme="dark"] #goals .goal-level-floor{--goal-level-bg:#43371d;--goal-level-ink:#f0d396}
+:root[data-theme="dark"] #goals .goal-level-target{--goal-level-bg:#1c3c29;--goal-level-ink:#aee3bf}
+:root[data-theme="dark"] #goals .goal-level-ideal{--goal-level-bg:#20394d;--goal-level-ink:#b5d8fa}
+:root[data-theme="dark"] #goals .goals-level-guide small{color:inherit}
