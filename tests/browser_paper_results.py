@@ -28,8 +28,17 @@ with sync_playwright() as playwright:
         page.add_init_script(f"""
           if (!localStorage.getItem('{KEY}')) {{
             localStorage.setItem('{KEY}', JSON.stringify({{
-              studies: [], scores: [], tasks: [], scienceTagVersion: 2,
-              pastPapers: [{{id:'p',exam:'テスト大学',subject:'数学',year:2025,statuses:{{}}}}]
+              studies: [], tasks: [], scienceTagVersion: 2,
+              scores: [
+                {{id:'past',name:'テスト大学 2025年度',kind:'過去問',date:'2026-11-01',subject:'数学',
+                  score:8,max:40,scoreComplete:true,questions:[
+                    {{name:'1',max:20,score:0,minutes:18,tags:[]}},
+                    {{name:'2',max:20,score:8,tags:[]}}
+                  ]}},
+                {{id:'mock',name:'テスト大学 2025年度',kind:'模試',date:'2026-11-02',subject:'数学',
+                  score:20,max:20,scoreComplete:true,questions:[{{name:'1',max:20,score:20,minutes:99,tags:[]}}]}}
+              ],
+              pastPapers: [{{id:'p',exam:'テスト大学',subject:'数学',year:2025,statuses:{{}},tagsByQuestion:{{'1':['整数']}}}}]
             }}));
             localStorage.setItem('atlas.theme.v1', '{theme}');
           }}
@@ -39,6 +48,17 @@ with sync_playwright() as playwright:
         cell = page.locator("#paperTable tbody .paper-cell").first
         state = cell.locator("select").first
         assert not dialog.is_visible()
+        assert cell.locator(".paper-linked-result").inner_text() == "過去問結果 18分 / 0点"
+        picker = page.locator("#paperFilterTags")
+        picker.locator("summary").click()
+        picker.get_by_label("整数", exact=True).check()
+        unmatched = page.locator("#paperTable tbody .paper-cell").nth(1)
+        assert "paper-filtered" in unmatched.get_attribute("class")
+        assert "paper-filtered" not in cell.get_attribute("class")
+        color = unmatched.evaluate("node => getComputedStyle(node).backgroundColor")
+        assert color == ("rgb(18, 23, 25)" if theme == "dark" else "rgb(248, 250, 248)")
+        page.locator("#paperFilterClear").click()
+        assert "paper-filtered" not in unmatched.get_attribute("class")
         state.select_option("done")
         assert dialog.is_visible()
         assert state.input_value() == "new"
