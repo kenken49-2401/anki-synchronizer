@@ -156,3 +156,10 @@
 :root[data-theme="dark"] #goals .goal-level-target{--goal-level-bg:#1c3c29;--goal-level-ink:#aee3bf}
 :root[data-theme="dark"] #goals .goal-level-ideal{--goal-level-bg:#20394d;--goal-level-ink:#b5d8fa}
 :root[data-theme="dark"] #goals .goals-level-guide small{color:inherit}
+
+/* Keep nonmatches on a quiet, neutral surface in the dark past-paper grid. */
+:root[data-theme="dark"] #paperTable {
+  --paper-filtered-bg: #121719;
+  --paper-filtered-ink: #a5b1ab;
+  --paper-filtered-opacity: .5;
+}
