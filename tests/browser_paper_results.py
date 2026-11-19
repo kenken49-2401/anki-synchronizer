@@ -56,7 +56,9 @@ with sync_playwright() as playwright:
         cell = page.locator("#paperTable tbody .paper-cell").first
         edit = cell.locator(".paper-result-edit")
         assert not dialog.is_visible()
-        assert cell.locator(".paper-result-line span").all_text_contents() == ["18分", "0点"]
+        result = cell.locator(".difficulty-badge + .paper-result-value")
+        assert result.inner_text() == "0点(18m)"
+        assert result.evaluate("e => getComputedStyle(e).color") == "rgb(0, 0, 0)"
         assert "過去問結果" not in cell.inner_text()
         if width == 390:
             assert cell.bounding_box()["width"] < 100
@@ -69,8 +71,11 @@ with sync_playwright() as playwright:
         picker.get_by_label("整数", exact=True).check()
         matches = page.locator("#paperMatchesTable tbody tr")
         assert matches.count() == 2
-        assert matches.nth(0).locator("td").all_text_contents() == ["2025", "1", "C", "**°", "要復習"]
-        assert matches.nth(1).locator("td").all_text_contents() == ["1999", "1", "—", "—", "解いた"]
+        assert matches.nth(0).locator("td").all_text_contents() == ["2025", "1", "C", "**°", "0点", "18m"]
+        assert matches.nth(1).locator("td").all_text_contents() == ["1999", "1", "—", "—", "—", "—"]
+        assert "paper-solved" in matches.nth(1).get_attribute("class")
+        color_of = "e => getComputedStyle(e).backgroundColor"
+        assert matches.nth(0).evaluate(color_of) == cell.evaluate(color_of)
         unmatched = page.locator("#paperTable tbody .paper-cell").nth(1)
         assert "paper-filtered" in unmatched.get_attribute("class")
         assert "paper-filtered" not in cell.get_attribute("class")
@@ -94,7 +99,7 @@ with sync_playwright() as playwright:
         dialog.get_by_role("button", name="保存", exact=True).click()
         assert not dialog.is_visible()
         assert cell.get_attribute("data-state") == "review"
-        assert cell.locator(".paper-result-line span").all_text_contents() == ["35分", "0点"]
+        assert cell.locator(".paper-result-value").inner_text() == "0点(35m)"
         page.reload()
         assert not dialog.is_visible()
         edit.click()
@@ -113,7 +118,7 @@ with sync_playwright() as playwright:
         dialog.get_by_label("所要時間").fill("24")
         dialog.get_by_role("button", name="保存", exact=True).click()
         assert third.get_attribute("data-state") == "new"
-        assert third.locator(".paper-result-line span").all_text_contents() == ["24分"]
+        assert third.locator(".paper-result-value").inner_text() == "(24m)"
         assert page.evaluate("document.documentElement.scrollWidth === innerWidth")
         assert page.locator("#paperTable th[scope=row]").all_text_contents() == ["2025", "2000", "1999"]
         assert "2000年度以降 · 全12問 · 解いた 1問 · 要復習 2問" in page.locator("#paperSummary").inner_text()
