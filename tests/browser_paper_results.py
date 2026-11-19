@@ -50,9 +50,11 @@ with sync_playwright() as playwright:
           }}
         """)
         page.goto("http://atlas.test/study-atlas.html#paper")
+        assert not page_errors, page_errors
+        page.set_default_timeout(3500)
         dialog = page.locator("#paperResultDialog")
         cell = page.locator("#paperTable tbody .paper-cell").first
-        state = cell.locator("select").first
+        edit = cell.locator(".paper-result-edit")
         assert not dialog.is_visible()
         assert cell.locator(".paper-linked-result").inner_text() == "過去問結果 18分 / 0点"
         picker = page.locator("#paperFilterTags")
@@ -65,45 +67,49 @@ with sync_playwright() as playwright:
         assert color == ("rgb(18, 23, 25)" if theme == "dark" else "rgb(248, 250, 248)")
         page.locator("#paperFilterClear").click()
         assert "paper-filtered" not in unmatched.get_attribute("class")
-        state.select_option("done")
+        edit.click()
         assert dialog.is_visible()
-        assert state.input_value() == "new"
+        assert cell.get_attribute("data-state") == "review"
         dialog.get_by_role("button", name="キャンセル").click()
-        assert state.input_value() == "new"
-        state.select_option("done")
+        assert cell.get_attribute("data-state") == "review"
+        edit.click()
         dialog.get_by_label("所要時間").fill("35")
         dialog.get_by_label("点数").fill("0")
         dialog.get_by_role("button", name="保存", exact=True).click()
         assert not dialog.is_visible()
-        assert state.input_value() == "done"
+        assert cell.get_attribute("data-state") == "review"
         assert "実測 35分 / 0点" in cell.inner_text()
         page.reload()
         assert not dialog.is_visible()
-        cell.get_by_role("button", name="実測 35分 / 0点").click()
+        edit.click()
         assert dialog.get_by_label("点数").input_value() == "0"
-        dialog.get_by_label("点数").fill("12.5")
+        dialog.get_by_label("点数").fill("15")
         dialog.get_by_role("button", name="保存", exact=True).click()
-        assert "12.5点" in cell.inner_text()
-        second = page.locator("#paperTable tbody .paper-cell").nth(1)
-        second.locator("select").first.select_option("done")
+        assert "15点" in cell.inner_text()
+        assert cell.get_attribute("data-state") == "done"
+        assert cell.locator("select").count() == 0
+        assert edit.bounding_box()["height"] <= 26
+        third = page.locator("#paperTable tbody .paper-cell").nth(2)
+        third.locator(".paper-result-edit").click()
+        dialog.get_by_label("所要時間").fill("24")
         dialog.get_by_role("button", name="保存", exact=True).click()
-        assert second.locator("select").first.input_value() == "done"
-        assert second.get_by_text("時間・点数を入力").is_visible()
+        assert third.get_attribute("data-state") == "new"
+        assert "実測 24分" in third.inner_text()
         assert page.evaluate("document.documentElement.scrollWidth === innerWidth")
         assert page.locator("#paperTable th[scope=row]").all_text_contents() == ["2025", "2000", "1999"]
-        assert "2000年度以降 · 全12問 · 解いた 2問 · 要復習 1問" in page.locator("#paperSummary").inner_text()
+        assert "2000年度以降 · 全12問 · 解いた 1問 · 要復習 2問" in page.locator("#paperSummary").inner_text()
         assert "3/12問" in page.locator("#paperStats").inner_text()
         page.locator("#paperSubject").select_option("理科")
         group = page.locator("#paperFilterGroup")
         group.select_option("物理:力学")
-        assert page.locator("#paperTable .paper-cell:not(.paper-filtered) select").first.get_attribute("aria-label") == "1999年度 物理1 の状態"
+        assert page.locator("#paperTable .paper-cell:not(.paper-filtered) .paper-result-edit").first.get_attribute("aria-label").startswith("1999年度 物理1")
         assert page.locator("#paperTable .paper-cell:not(.paper-filtered)").count() == 1
         picker.locator("summary").click()
         picker.get_by_label("回路", exact=True).check()
         assert page.locator("#paperTable .paper-cell:not(.paper-filtered)").count() == 0
         page.locator("#paperFilterClear").click()
         group.select_option("化学:理論")
-        assert page.locator("#paperTable .paper-cell:not(.paper-filtered) select").first.get_attribute("aria-label") == "1999年度 化学1 の状態"
+        assert page.locator("#paperTable .paper-cell:not(.paper-filtered) .paper-result-edit").first.get_attribute("aria-label").startswith("1999年度 化学1")
         page.locator("#paperSubject").select_option("数学")
         assert not group.is_visible()
         assert group.input_value() == ""
