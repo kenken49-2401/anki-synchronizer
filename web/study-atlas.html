@@ -211,13 +211,14 @@ th{font-size:11px;letter-spacing:.15px;color:#61786b;background:#f6f9f7}
 #paperResultForm { display:grid; gap:12px; }
 #paperResultForm p { margin:0; }
 .paper-result-actions { display:flex; flex-wrap:wrap; gap:8px; }
-.paper-linked-result { margin:6px 0 0; font-size:12px; font-weight:650; }
-#paperTable { width:max-content; min-width:100%; }
-#paperTable th, #paperTable td { padding:7px 8px; }
-#paperTable .paper-cell { width:112px; min-width:72px; white-space:normal; }
+#paperTable { width:max-content; }
+#paperTable th, #paperTable td { padding:4px 5px; }
+#paperTable .paper-cell { width:75px; min-width:48px; white-space:normal; }
 #paperTable .paper-reference { min-width:0; }
-#paperTable .paper-tag-list { max-width:112px; gap:2px; margin-top:3px; }
-.paper-result-line { display:flex; align-items:center; justify-content:center; gap:3px; font-size:11px; }
+#paperTable .paper-tag-list { max-width:75px; gap:2px; margin-top:1px; }
+.paper-result-line { display:flex; align-items:center; justify-content:center; flex-wrap:wrap; gap:2px; font-size:11px; line-height:1.25; }
+.paper-result-line span { white-space:nowrap; }
+#paperTable .difficulty-line .difficulty-badge { margin:1px auto; }
 #paperTable .paper-result-edit { min-width:24px; min-height:24px; padding:1px 4px; line-height:1; font-size:13px; }
 #tagGroupField[hidden], #paperFilterGroupField[hidden] { display:none; }
 #tagCatalog .tag-group { margin:12px 0 4px; font-size:12px; color:var(--muted); }
@@ -570,14 +571,15 @@ paperResultForm.onsubmit=event=>{
   }
 };
 
-function appendPaperResult(cell,row,name,state){
+function appendPaperResult(cell,row,name,state,linked,reference){
   const result=Object.hasOwn(row.resultsByQuestion||{},name)?row.resultsByQuestion[name]:null;
-  const parts=[];
-  if(Number.isFinite(result?.minutes))parts.push('実測 '+result.minutes+'分');
-  if(Number.isFinite(result?.score))parts.push(result.score+'点');
   const line=el('div','','paper-result-line');
-  if(parts.length)line.append(el('span',parts.join(' / ')));
-  const button=el('button',parts.length?'✎':'＋','secondary paper-result-edit');
+  for(const [field,unit] of [['minutes','分'],['score','点']]){
+    const recorded=result?.[field]??linked?.[field];
+    const value=recorded??reference?.[field];
+    if(Number.isFinite(value))line.append(el('span',value+unit+(recorded==null?'※':'')));
+  }
+  const button=el('button',line.childElementCount?'✎':'＋','secondary paper-result-edit');
   button.type='button';
   button.dataset.paperId=row.id;
   button.dataset.question=name;
@@ -710,14 +712,13 @@ function renderPapers(){
  td.dataset.state=state;
  td.dataset.year=String(row.year);
  td.dataset.tagCategory=categoryFor(subject.value,name);
- appendPaperResult(td,row,name,state);
- const linkedParts=[];
- if(Number.isFinite(linked?.minutes))linkedParts.push(linked.minutes+'分');
- if(Number.isFinite(linked?.score))linkedParts.push(linked.score+'点');
- if(linkedParts.length)td.append(el('div','過去問結果 '+linkedParts.join(' / '),'paper-linked-result'));
+ const mathIndex=Number(name)-1;
+ const mathReference=subject.value==='数学'&&Number.isInteger(mathIndex)&&mathIndex>=0&&mathIndex<6
+   ?data.mathReference?.[String(row.year)]?.[mathIndex]:null;
+ const reference=subject.value==='理科'?data.scienceReference?.[String(row.year)]?.[name]:mathReference;
+ appendPaperResult(td,row,name,state,linked,reference);
  let filterDifficulty='',filterTime='';
  if(subject.value==='数学'){
-   const index=Number(name)-1,reference=Number.isInteger(index)&&index>=0&&index<6?data.mathReference?.[String(row.year)]?.[index]:null;
    filterDifficulty=linked?.difficulty??reference?.difficulty??'';
    filterTime=linked?.expectedMinutes??reference?.expectedMinutes??'';
    if(['A','B','C','D'].includes(filterDifficulty)){
@@ -734,16 +735,7 @@ function renderPapers(){
      }
      td.append(line);
    }
-   const parts=[];
-   if(!Number.isFinite(linked?.minutes)&&reference?.minutes!=null)parts.push('時間 '+reference.minutes+'分※');
-   if(filterTime!=='')parts.push('目安 '+filterTime+'分'+(linked?.expectedMinutes==null?'※':''));
-   if(parts.length)td.append(el('div',parts.join(' / '),'paper-reference'));
- }
- if(subject.value==='理科'){
-   const ref=data.scienceReference?.[String(row.year)]?.[name],parts=[];
-   if(!Number.isFinite(linked?.score)&&ref?.score!=null)parts.push('得点 '+ref.score+'点');
-   if(!Number.isFinite(linked?.minutes)&&ref?.minutes!=null)parts.push('時間 '+ref.minutes+'分');
-   if(parts.length)td.append(el('div',parts.join(' / ')+' ※','paper-reference'));
+   if(filterTime!=='')td.append(el('div','目安 '+filterTime+'分'+(linked?.expectedMinutes==null?'※':''),'paper-reference'));
  }
  const selectedTags=row.tagsByQuestion?.[name]||[];
  td.dataset.tags=JSON.stringify(selectedTags);
