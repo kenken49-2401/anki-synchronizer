@@ -72,11 +72,15 @@ with sync_playwright() as playwright:
         edit.click()
         assert dialog.is_visible()
         assert cell.get_attribute("data-state") == "review"
+        dialog.get_by_label("整数", exact=True).uncheck()
         dialog.get_by_role("button", name="キャンセル").click()
+        assert cell.get_by_text("整数", exact=True).is_visible()
         assert cell.get_attribute("data-state") == "review"
         edit.click()
         dialog.get_by_label("所要時間").fill("35")
         dialog.get_by_label("点数").fill("0")
+        dialog.get_by_label("整数", exact=True).uncheck()
+        dialog.get_by_label("微積分", exact=True).check()
         dialog.get_by_role("button", name="保存", exact=True).click()
         assert not dialog.is_visible()
         assert cell.get_attribute("data-state") == "review"
@@ -85,6 +89,9 @@ with sync_playwright() as playwright:
         assert not dialog.is_visible()
         edit.click()
         assert dialog.get_by_label("点数").input_value() == "0"
+        assert dialog.get_by_label("微積分", exact=True).is_checked()
+        assert not dialog.get_by_label("整数", exact=True).is_checked()
+        assert cell.get_by_role("button").count() == 1
         dialog.get_by_label("点数").fill("15")
         dialog.get_by_role("button", name="保存", exact=True).click()
         assert "15点" in cell.inner_text()
@@ -137,12 +144,10 @@ with sync_playwright() as playwright:
             viewport.evaluate("element => { element.scrollLeft = 0; }")
             cell.locator(".paper-result-edit").tap()
             assert dialog.is_visible()
-            dialog.get_by_role("button", name="キャンセル").tap()
-            tag_picker = cell.locator(".tag-picker")
-            tag_picker.locator("summary").tap()
-            assert tag_picker.get_by_label("整数", exact=True).is_visible()
-            popup = tag_picker.locator(".tag-options").bounding_box()
-            assert popup and 0 <= popup["x"] < popup["x"] + popup["width"] <= width
+            assert dialog.get_by_label("微積分", exact=True).is_checked()
+            dialog.get_by_label("整数", exact=True).check()
+            dialog.get_by_role("button", name="保存", exact=True).tap()
+            assert cell.get_by_text("整数", exact=True).is_visible()
             page.locator("#paperZoomReset").click()
             assert page.locator("#paperZoomReset").inner_text() == "100%"
         assert not page_errors, page_errors

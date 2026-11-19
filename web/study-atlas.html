@@ -210,6 +210,11 @@ th{font-size:11px;letter-spacing:.15px;color:#61786b;background:#f6f9f7}
 #paperResultDialog::backdrop { background:#09110b99; }
 #paperResultForm { display:grid; gap:12px; }
 #paperResultForm p { margin:0; }
+#paperResultTagField { min-width:0; margin:0; padding:8px 10px; border:1px solid var(--line); border-radius:8px; }
+#paperResultTags { display:grid; gap:4px; max-height:28vh; overflow:auto; }
+#paperResultTags label { display:flex; align-items:center; gap:8px; padding:3px 0; }
+#paperResultTags input { width:auto; margin:0; }
+#paperResultTags .tag-group { margin-top:4px; }
 .paper-result-actions { display:flex; flex-wrap:wrap; gap:8px; }
 #paperTable { width:max-content; }
 #paperTableViewport { touch-action:pan-x pan-y; overflow-anchor:none; margin-top:6px; }
@@ -240,15 +245,16 @@ th{font-size:11px;letter-spacing:.15px;color:#61786b;background:#f6f9f7}
   <button type="button" class="secondary" id="paperZoomOut" aria-label="表を縮小">−</button>
   <button type="button" class="secondary" id="paperZoomReset" aria-label="表の倍率を100%に戻す">100%</button>
   <button type="button" class="secondary" id="paperZoomIn" aria-label="表を拡大">＋</button>
-</div><div class="table-wrap" id="paperTableViewport"><table id="paperTable"><caption>年度別・大問別の進捗</caption></table></div><p class="muted">「＋」または鉛筆ボタンから点数・時間を記録できます。GitHubに接続中は自動で同期されます。</p></section>
+</div><div class="table-wrap" id="paperTableViewport"><table id="paperTable"><caption>年度別・大問別の進捗</caption></table></div><p class="muted">「＋」または鉛筆ボタンから点数・時間・タグを編集できます。GitHubに接続中は自動で同期されます。</p></section>
 <section id="tasks" hidden><h2>期日付きタスク</h2><p class="muted">期日までに達成したいことを登録します。未完了のタスクは期日順に確認できます。</p><p id="taskEditStatus" class="muted" role="status"></p><form id="taskForm"><label>期日<input name="date" type="date" required></label><label>内容<input name="title" type="text" maxlength="160" required placeholder="数学の過去問を解く"></label><label>優先度<select name="priority"><option value="high">高</option><option value="medium" selected>中</option><option value="low">低</option></select></label><label>目標の決め方<select name="quantityMode"><option value="none">数量目標なし</option><option value="daily">1日ごとの目標</option><option value="total">全体の目標から割り当て</option><option value="pace">1日の量と全体量から期日を計算</option></select></label><label id="quantityStartLabel" hidden>開始日<input name="start" type="date"></label><label id="quantityDailyLabel" hidden>1日ごとの目標<input name="daily" type="number" min="1" max="1000000" step="1" placeholder="例：5"></label><label id="quantityTotalLabel" hidden>全体の目標<input name="total" type="number" min="1" max="1000000" step="1" placeholder="例：50"></label><label id="quantityUnitLabel" hidden>単位<input name="unit" type="text" maxlength="20" placeholder="例：問"></label><p id="quantityPlanHint" class="muted" style="flex-basis:100%" hidden></p><label>期日当日の通知時刻（任意）<input name="time" type="time"></label><button id="taskSubmit">追加する</button><button id="taskCancel" type="button" class="secondary" hidden>編集をキャンセル</button></form><p><button id="notify" class="secondary" type="button">通知を許可する</button> <small>時刻を指定すると、期日当日にこの画面を開いている間に通知します。</small></p><div id="taskList"></div></section>
 <dialog id="paperResultDialog" aria-labelledby="paperResultTitle">
-  <h3 id="paperResultTitle">解いた結果</h3>
+  <h3 id="paperResultTitle">問題の記録を編集</h3>
   <p id="paperResultQuestion" class="muted"></p>
   <form id="paperResultForm">
     <label>所要時間（分）<input name="minutes" type="number" min="1" step="1" inputmode="numeric"></label>
     <label>点数<input name="score" type="number" min="0" step="any" inputmode="decimal"></label>
     <p class="muted">15点以上は「解いた」、15点未満は「要復習」です。時間だけの記録も保存できます。</p>
+    <fieldset id="paperResultTagField"><legend>タグ</legend><div id="paperResultTags"></div></fieldset>
     <p id="paperResultStatus" role="status" hidden></p>
     <div class="paper-result-actions"><button type="submit">保存</button><button type="button" class="secondary" id="paperResultCancel">キャンセル</button></div>
   </form>
@@ -417,17 +423,60 @@ function positionTagPicker(){
   if(!activeTagPicker?.isConnected||!activeTagPicker.open)return;
   const summary=activeTagPicker.querySelector('summary'),list=activeTagPicker.querySelector('.tag-options');
   const rect=summary.getBoundingClientRect();
-  const scale=activeTagPicker.closest('#paperTable')?paperZoom:1;
-  list.style.maxHeight=Math.max(80,Math.min(220,window.innerHeight-16))/scale+'px';
-  list.style.width=Math.min(Math.max(rect.width,160),window.innerWidth-16)/scale+'px';
-  const width=list.offsetWidth*scale,height=list.offsetHeight*scale;
-  list.style.left=Math.max(8,Math.min(rect.left,window.innerWidth-width-8))/scale+'px';
+  list.style.maxHeight=Math.max(80,Math.min(220,window.innerHeight-16))+'px';
+  list.style.width=Math.min(Math.max(rect.width,160),window.innerWidth-16)+'px';
+  const width=list.offsetWidth,height=list.offsetHeight;
+  list.style.left=Math.max(8,Math.min(rect.left,window.innerWidth-width-8))+'px';
   const below=window.innerHeight-rect.bottom,above=rect.top;
-  list.style.top=Math.max(8,Math.min(window.innerHeight-height-8,below<height&&above>below?rect.top-height:rect.bottom+3))/scale+'px';
+  list.style.top=Math.max(8,Math.min(window.innerHeight-height-8,below<height&&above>below?rect.top-height:rect.bottom+3))+'px';
 }
 
 window.addEventListener('scroll',positionTagPicker,true);window.addEventListener('resize',positionTagPicker);
-function makeTagPicker(categories,chosen=[]){const box=document.createElement('details');box.className='tag-picker';box.addEventListener('toggle',()=>{if(box.open){if(activeTagPicker&&activeTagPicker!==box)activeTagPicker.open=false;activeTagPicker=box;positionTagPicker()}else if(activeTagPicker===box)activeTagPicker=null});const summary=el('summary','タグを選択');box.append(summary);const list=el('div','','tag-options');let count=0;const visible=new Set();for(const category of categories)for(const [group,choices] of groupedTagChoices(category)){if(!choices.length)continue;list.append(el('p',group?category+' / '+group:category,'tag-group'));for(const tag of choices){count++;visible.add(tag);const label=document.createElement('label'),input=document.createElement('input');input.type='checkbox';input.value=tag;input.checked=chosen.includes(tag);input.onchange=()=>{const n=readPicker(box).length;summary.textContent=n?n+'件選択':'タグを選択'};label.append(input,document.createTextNode(tag));list.append(label)}}const legacy=chosen.filter(tag=>!visible.has(tag));if(legacy.length){list.append(el('p','記録済みの削除されたタグ','tag-group'));for(const tag of legacy){count++;const label=document.createElement('label'),input=document.createElement('input');input.type='checkbox';input.value=tag;input.checked=true;input.onchange=()=>{const n=readPicker(box).length;summary.textContent=n?n+'件選択':'タグを選択'};label.append(input,document.createTextNode(tag));list.append(label)}}if(!count)list.append(el('p','タグ追加画面で登録できます。','muted'));box.append(list);const n=readPicker(box).length;summary.textContent=n?n+'件選択':'タグを選択';return box}
+function makeTagOptions(container,categories,chosen,onChange){
+  const visible=new Set();
+  const addTag=tag=>{
+    const label=document.createElement('label'),input=document.createElement('input');
+    input.type='checkbox';
+    input.value=tag;
+    input.checked=chosen.includes(tag);
+    if(onChange)input.addEventListener('change',onChange);
+    label.append(input,document.createTextNode(tag));
+    container.append(label);
+    visible.add(tag);
+  };
+  for(const category of categories)for(const [group,tags] of groupedTagChoices(category)){
+    const choices=tags.filter(tag=>!visible.has(tag));
+    if(!choices.length)continue;
+    container.append(el('p',group?category+' / '+group:category,'tag-group'));
+    choices.forEach(addTag);
+  }
+  const legacy=[...new Set(chosen)].filter(tag=>!visible.has(tag));
+  if(legacy.length){
+    container.append(el('p','記録済みのタグ','tag-group'));
+    legacy.forEach(addTag);
+  }
+  if(!visible.size)container.append(el('p','タグ追加画面で登録できます。','muted'));
+}
+function makeTagPicker(categories,chosen=[]){
+  const box=document.createElement('details');
+  box.className='tag-picker';
+  box.addEventListener('toggle',()=>{
+    if(box.open){
+      if(activeTagPicker&&activeTagPicker!==box)activeTagPicker.open=false;
+      activeTagPicker=box;
+      positionTagPicker();
+    }else if(activeTagPicker===box)activeTagPicker=null;
+  });
+  const summary=el('summary','タグを選択'),list=el('div','','tag-options');
+  const updateSummary=()=>{
+    const count=readPicker(box).length;
+    summary.textContent=count?count+'件選択':'タグを選択';
+  };
+  makeTagOptions(list,categories,chosen,updateSummary);
+  box.append(summary,list);
+  updateSummary();
+  return box;
+}
 function categoriesForSubject(subject){return subject==='理科'?['物理','化学','理科']:[/^数学/.test(subject)?'数学':/^英語/.test(subject)?'英語':subject]}
 function refreshTagPickers(){const subject=$('#examSubject').value,container=$('#subjectTagPicker'),previous=readPicker(container);container.replaceChildren(makeTagPicker(categoriesForSubject(subject),previous));for(const row of document.querySelectorAll('#questionInputs tbody tr')){const td=row.querySelector('[data-tag-container]');if(!td)continue;const selected=readPicker(td);td.replaceChildren(makeTagPicker([categoryFor(subject,row.dataset.name)],selected))}}
 function renderTagCatalog(){const root=$('#tagCatalog');root.replaceChildren();for(const cat of tagCategories){const box=el('div','','catalog-group');applySubjectAppearance(box,cat);box.append(el('strong',cat));for(const [group,tags] of groupedTagChoices(cat)){
@@ -548,7 +597,6 @@ let paperZoom=1,paperPinch=null;
 
 function zoomPaperTable(scale,anchor,center){
   paperZoom=Math.max(minPaperZoom,Math.min(maxPaperZoom,scale));
-  if(activeTagPicker&&paperTable.contains(activeTagPicker))activeTagPicker.open=false;
   paperTable.style.zoom=paperZoom;
   const rect=paperTable.getBoundingClientRect();
   paperTableViewport.scrollLeft+=rect.left+anchor.x*paperZoom-center.x;
@@ -602,6 +650,9 @@ function openPaperResult(row,name,trigger){
   $('#paperResultQuestion').textContent=row.exam+' '+row.year+'年度 · '+row.subject+' '+name;
   paperResultForm.elements.minutes.value=result?.minutes??'';
   paperResultForm.elements.score.value=result?.score??'';
+  const tags=$('#paperResultTags');
+  tags.replaceChildren();
+  makeTagOptions(tags,[categoryFor(row.subject,name)],row.tagsByQuestion?.[name]||[]);
   $('#paperResultStatus').hidden=true;
   paperResultDialog.showModal();
 }
@@ -634,6 +685,12 @@ paperResultForm.onsubmit=event=>{
   if(!Object.keys(result).length)delete results[edit.name];
   if(Object.keys(results).length)row.resultsByQuestion=results;
   else delete row.resultsByQuestion;
+  const chosen=readPicker($('#paperResultTags'));
+  const previousTags=row.tagsByQuestion?.[edit.name]||[];
+  const tags=[...previousTags.filter(tag=>chosen.includes(tag)),...chosen.filter(tag=>!previousTags.includes(tag))];
+  if(tags.length||Object.hasOwn(row.tagsByQuestion||{},edit.name)){
+    row.tagsByQuestion={...row.tagsByQuestion,[edit.name]:tags};
+  }
   if(save())paperResultDialog.close();
   else{
     status.textContent='保存できませんでした。画面上部の案内を確認してください。';
@@ -653,8 +710,8 @@ function appendPaperResult(cell,row,name,state,linked,reference){
   button.type='button';
   button.dataset.paperId=row.id;
   button.dataset.question=name;
-  button.title='点数・時間を記録';
-  button.setAttribute('aria-label',row.year+'年度 '+name+'（'+paperStatuses[state]+'）の点数・時間を記録');
+  button.title='点数・時間・タグを編集';
+  button.setAttribute('aria-label',row.year+'年度 '+name+'（'+paperStatuses[state]+'）の点数・時間・タグを編集');
   button.onclick=()=>openPaperResult(row,name,button);
   line.append(button);
   cell.append(line);
@@ -809,7 +866,15 @@ function renderPapers(){
  }
  const selectedTags=row.tagsByQuestion?.[name]||[];
  td.dataset.tags=JSON.stringify(selectedTags);
- td.dataset.difficulty=filterDifficulty;td.dataset.expectedMinutes=filterTime;const chips=el('div','','paper-tag-list');for(const tag of selectedTags){const chip=el('span','','tag-chip'),remove=el('button','×','paper-tag-remove');chip.append(el('span',tag));remove.type='button';remove.setAttribute('aria-label',row.year+'年度 '+name+' のタグ「'+tag+'」を削除');remove.onclick=()=>{const previous=row.tagsByQuestion;row.tagsByQuestion={...(previous||{}),[name]:selectedTags.filter(t=>t!==tag)};if(!save())row.tagsByQuestion=previous};chip.append(remove);chips.append(chip)}const picker=makeTagPicker([categoryFor(subject.value,name)],selectedTags),summary=picker.querySelector('summary');summary.textContent='+';summary.setAttribute('aria-label',row.year+'年度 '+name+' にタグを追加');picker.addEventListener('change',()=>{summary.textContent='+'});const apply=el('button','タグを保存','secondary');apply.type='button';apply.onclick=()=>{const previous=row.tagsByQuestion;row.tagsByQuestion={...(previous||{}),[name]:readPicker(picker)};if(!save())row.tagsByQuestion=previous};picker.querySelector('.tag-options').append(apply);chips.append(picker);td.append(chips);tr.append(td)}
+ td.dataset.difficulty=filterDifficulty;
+ td.dataset.expectedMinutes=filterTime;
+ if(selectedTags.length){
+   const chips=el('div','','paper-tag-list');
+   for(const tag of selectedTags)chips.append(el('span',tag,'tag-chip'));
+   td.append(chips);
+ }
+ tr.append(td);
+ }
  const td=el('td','');const del=el('button','年度を削除','danger');del.type='button';del.onclick=()=>{if(confirm(row.exam+' '+row.subject+' '+row.year+'年度の記録を削除しますか？')){data.pastPapers=paperEntries().filter(x=>x.id!==row.id);save()}};td.append(del);tr.append(td);body.append(tr)}
  if(!entries.length){const tr=el('tr',''),td=el('td','年度を追加するとここに表示されます');td.colSpan=cols.length+2;tr.append(td);body.append(tr)}table.replaceChildren(head,body);applyPaperFilters();
  $('#paperReference').textContent=subject.value==='数学'?'※は「数学(前期)」の参考値です。大学・試験名は自動では照合しません。時間は別の取組の記録の場合があります。':subject.value==='理科'?'※は「理科過去問」シートの年度別参考値です。大学・試験名は自動では照合しません。':'';
