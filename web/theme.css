@@ -127,8 +127,8 @@
 :root[data-theme="dark"] :is(.answer-toggle,.answer-content>span,.card-index) { color: #94c9ed; }
 :root[data-theme="dark"] .nav-item.active { background: #30263f; color: #d0b7ff; }
 :root[data-theme="dark"] #near-goals input[readonly] { background: #1d2922; color: #c5e5cf; }
-:root[data-theme="dark"] .paper-cell.paper-solved { background: #1e3c2b; }
-:root[data-theme="dark"] .paper-cell.paper-review { background: #412827; }
+:root[data-theme="dark"] :is(.paper-cell,.paper-match-row,.paper-match-key).paper-solved { background: #1e3c2b; }
+:root[data-theme="dark"] :is(.paper-cell,.paper-match-row,.paper-match-key).paper-review { background: #412827; }
 
 /* Progress summaries and today's task controls have their own pale surfaces. */
 :root[data-theme="dark"] #paperStats .difficulty-stats { background: var(--raised); color: var(--ink); border-color: var(--line); }
