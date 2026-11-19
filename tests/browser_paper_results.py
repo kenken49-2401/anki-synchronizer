@@ -12,7 +12,7 @@ with sync_playwright() as playwright:
         executable_path=shutil.which("chromium"), args=["--no-sandbox"]
     )
     for theme, width in [("light", 1440), ("dark", 390)]:
-        page = browser.new_page(viewport={"width": width, "height": 844})
+        page = browser.new_page(viewport={"width": width, "height": 844}, has_touch=width == 390)
         page_errors = []
         page.on("pageerror", lambda error: page_errors.append(str(error)))
         # Serve local assets without a live GitHub account or a network listener.
@@ -115,5 +115,35 @@ with sync_playwright() as playwright:
         page.locator("#paperSubject").select_option("数学")
         assert not group.is_visible()
         assert group.input_value() == ""
+        viewport = page.locator("#paperTableViewport")
+        table = page.locator("#paperTable")
+        original_width = table.bounding_box()["width"]
+        page.get_by_role("button", name="表を拡大", exact=True).click()
+        assert page.locator("#paperZoomReset").inner_text() == "125%"
+        assert table.bounding_box()["width"] > original_width * 1.2
+        page.get_by_role("button", name="表を縮小", exact=True).click()
+        assert page.locator("#paperZoomReset").inner_text() == "100%"
+        if width == 390:
+            viewport.scroll_into_view_if_needed()
+            box = viewport.bounding_box()
+            cx, cy = int(box["x"] + box["width"] / 2), int(box["y"] + box["height"] / 2)
+            cdp = page.context.new_cdp_session(page)
+            for event, radius in [("touchStart", 25), ("touchMove", 38), ("touchEnd", 0)]:
+                touches = [{"x": cx + dx, "y": cy, "id": i} for i, dx in enumerate([-radius, radius])] if radius else []
+                cdp.send("Input.dispatchTouchEvent", {"type": event, "touchPoints": touches})
+            assert page.locator("#paperZoomReset").inner_text() == "152%"
+            assert page.evaluate("visualViewport.scale") == 1
+            assert viewport.evaluate("element => element.scrollLeft") > 0
+            viewport.evaluate("element => { element.scrollLeft = 0; }")
+            cell.locator(".paper-result-edit").tap()
+            assert dialog.is_visible()
+            dialog.get_by_role("button", name="キャンセル").tap()
+            tag_picker = cell.locator(".tag-picker")
+            tag_picker.locator("summary").tap()
+            assert tag_picker.get_by_label("整数", exact=True).is_visible()
+            popup = tag_picker.locator(".tag-options").bounding_box()
+            assert popup and 0 <= popup["x"] < popup["x"] + popup["width"] <= width
+            page.locator("#paperZoomReset").click()
+            assert page.locator("#paperZoomReset").inner_text() == "100%"
         assert not page_errors, page_errors
         page.close()
