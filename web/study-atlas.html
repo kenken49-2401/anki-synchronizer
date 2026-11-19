@@ -748,14 +748,18 @@ function appendPaperResult(cell,row,name,state,recorded,reference,difficulty,exp
     badge.title='難易度 '+difficulty;
     line.append(badge);
   }
-  if(resultText)line.append(el('span',resultText+(isReference?'※':''),'paper-result-value'));
-  if(line.childElementCount)cell.append(line);
   const symbols=timeSymbols(expectedMinutes);
   if(symbols){
-    const marks=el('div',symbols,'paper-time-symbols');
+    const marks=el('span',symbols,'paper-time-symbols');
     marks.title='目安時間 '+expectedMinutes+'分';
     marks.setAttribute('aria-label',marks.title);
-    cell.append(marks);
+    line.append(marks);
+  }
+  if(line.childElementCount)cell.append(line);
+  if(resultText){
+    const resultLine=el('div','','paper-result-line');
+    resultLine.append(el('span',resultText+(isReference?'※':''),'paper-result-value'));
+    cell.append(resultLine);
   }
   const editLine=el('div','','paper-result-line');
   const button=el('button','✎','secondary paper-result-edit');
