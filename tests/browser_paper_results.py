@@ -32,7 +32,7 @@ with sync_playwright() as playwright:
               scores: [
                 {{id:'past',name:'テスト大学 2025年度',kind:'過去問',date:'2026-11-01',subject:'数学',
                   score:8,max:40,scoreComplete:true,questions:[
-                    {{name:'1',max:20,score:0,minutes:18,tags:[]}},
+                    {{name:'1',max:20,score:0,minutes:18,difficulty:'C',expectedMinutes:25,tags:[]}},
                     {{name:'2',max:20,score:8,tags:[]}}
                   ]}},
                 {{id:'mock',name:'テスト大学 2025年度',kind:'模試',date:'2026-11-02',subject:'数学',
@@ -41,7 +41,7 @@ with sync_playwright() as playwright:
               pastPapers: [
                 {{id:'p',exam:'テスト大学',subject:'数学',year:2025,statuses:{{}},tagsByQuestion:{{'1':['整数']}}}},
                 {{id:'p2000',exam:'テスト大学',subject:'数学',year:2000,statuses:{{'1':'review'}}}},
-                {{id:'p1999',exam:'テスト大学',subject:'数学',year:1999,statuses:{{'1':'done'}}}},
+                {{id:'p1999',exam:'テスト大学',subject:'数学',year:1999,statuses:{{'1':'done'}},tagsByQuestion:{{'1':['整数']}}}},
                 {{id:'science',exam:'テスト大学',subject:'理科',year:1999,statuses:{{}},
                   tagsByQuestion:{{'物理1':['単振動'],'物理2':['回路'],'化学1':['溶液']}}}}
               ]
@@ -67,6 +67,10 @@ with sync_playwright() as playwright:
         picker = page.locator("#paperFilterTags")
         picker.locator("summary").click()
         picker.get_by_label("整数", exact=True).check()
+        matches = page.locator("#paperMatchesTable tbody tr")
+        assert matches.count() == 2
+        assert matches.nth(0).locator("td").all_text_contents() == ["2025", "1", "C", "**°", "要復習"]
+        assert matches.nth(1).locator("td").all_text_contents() == ["1999", "1", "—", "—", "解いた"]
         unmatched = page.locator("#paperTable tbody .paper-cell").nth(1)
         assert "paper-filtered" in unmatched.get_attribute("class")
         assert "paper-filtered" not in cell.get_attribute("class")
@@ -74,6 +78,7 @@ with sync_playwright() as playwright:
         assert color == ("rgb(18, 23, 25)" if theme == "dark" else "rgb(248, 250, 248)")
         page.locator("#paperFilterClear").click()
         assert "paper-filtered" not in unmatched.get_attribute("class")
+        assert not page.locator("#paperMatches").is_visible()
         edit.click()
         assert dialog.is_visible()
         assert cell.get_attribute("data-state") == "review"
