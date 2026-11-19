@@ -141,6 +141,19 @@ with sync_playwright() as playwright:
         page.locator("#paperSubject").select_option("数学")
         assert group.is_visible()
         assert group.input_value() == ""
+        assert group.locator("optgroup option").all_text_contents()[:6] == [
+            "数学Ⅰ", "数学A", "数学Ⅱ", "数学B", "数学Ⅲ", "数学C"
+        ]
+        topic_index = page.locator("#paperTopicIndex")
+        topic_index.locator(":scope > summary").click()
+        topic_index.get_by_text("整数（1問）", exact=True).click()
+        topic_index.get_by_text("微積分（1問）", exact=False).click()
+        integer_rows = topic_index.get_by_role("table", name="整数の問題").locator("tbody tr")
+        calculus_rows = topic_index.get_by_role("table", name="微積分の問題").locator("tbody tr")
+        assert integer_rows.first.locator("td").first.inner_text() == "1999"
+        assert calculus_rows.first.locator("td").first.inner_text() == "2025"
+        assert "paper-solved" in calculus_rows.first.get_attribute("class")
+        topic_index.locator(":scope > summary").click()
         for group_name in ("数学Ⅱ", "数学Ⅲ"):
             group.select_option("数学:" + group_name)
             assert page.locator("#paperMatchesTable tbody tr").count() == 1
