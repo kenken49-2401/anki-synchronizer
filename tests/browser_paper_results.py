@@ -38,7 +38,13 @@ with sync_playwright() as playwright:
                 {{id:'mock',name:'テスト大学 2025年度',kind:'模試',date:'2026-11-02',subject:'数学',
                   score:20,max:20,scoreComplete:true,questions:[{{name:'1',max:20,score:20,minutes:99,tags:[]}}]}}
               ],
-              pastPapers: [{{id:'p',exam:'テスト大学',subject:'数学',year:2025,statuses:{{}},tagsByQuestion:{{'1':['整数']}}}}]
+              pastPapers: [
+                {{id:'p',exam:'テスト大学',subject:'数学',year:2025,statuses:{{}},tagsByQuestion:{{'1':['整数']}}}},
+                {{id:'p2000',exam:'テスト大学',subject:'数学',year:2000,statuses:{{'1':'review'}}}},
+                {{id:'p1999',exam:'テスト大学',subject:'数学',year:1999,statuses:{{'1':'done'}}}},
+                {{id:'science',exam:'テスト大学',subject:'理科',year:1999,statuses:{{}},
+                  tagsByQuestion:{{'物理1':['単振動'],'物理2':['回路'],'化学1':['溶液']}}}}
+              ]
             }}));
             localStorage.setItem('atlas.theme.v1', '{theme}');
           }}
@@ -84,5 +90,22 @@ with sync_playwright() as playwright:
         assert second.locator("select").first.input_value() == "done"
         assert second.get_by_text("時間・点数を入力").is_visible()
         assert page.evaluate("document.documentElement.scrollWidth === innerWidth")
+        assert page.locator("#paperTable th[scope=row]").all_text_contents() == ["2025", "2000", "1999"]
+        assert "2000年度以降 · 全12問 · 解いた 2問 · 要復習 1問" in page.locator("#paperSummary").inner_text()
+        assert "3/12問" in page.locator("#paperStats").inner_text()
+        page.locator("#paperSubject").select_option("理科")
+        group = page.locator("#paperFilterGroup")
+        group.select_option("物理:力学")
+        assert page.locator("#paperTable .paper-cell:not(.paper-filtered) select").first.get_attribute("aria-label") == "1999年度 物理1 の状態"
+        assert page.locator("#paperTable .paper-cell:not(.paper-filtered)").count() == 1
+        picker.locator("summary").click()
+        picker.get_by_label("回路", exact=True).check()
+        assert page.locator("#paperTable .paper-cell:not(.paper-filtered)").count() == 0
+        page.locator("#paperFilterClear").click()
+        group.select_option("化学:理論")
+        assert page.locator("#paperTable .paper-cell:not(.paper-filtered) select").first.get_attribute("aria-label") == "1999年度 化学1 の状態"
+        page.locator("#paperSubject").select_option("数学")
+        assert not group.is_visible()
+        assert group.input_value() == ""
         assert not page_errors, page_errors
         page.close()
