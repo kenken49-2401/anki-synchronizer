@@ -58,7 +58,12 @@ with sync_playwright() as playwright:
         assert not dialog.is_visible()
         assert cell.locator(".paper-result-line span").all_text_contents() == ["18分", "0点"]
         assert "過去問結果" not in cell.inner_text()
-        assert cell.bounding_box()["width"] < 100
+        if width == 390:
+            assert cell.bounding_box()["width"] < 100
+        else:
+            viewport = page.locator("#paperTableViewport")
+            assert abs(page.locator("#paperTable").bounding_box()["width"] - viewport.evaluate("e => e.clientWidth")) <= 2
+            assert cell.bounding_box()["width"] > 100
         picker = page.locator("#paperFilterTags")
         picker.locator("summary").click()
         picker.get_by_label("整数", exact=True).check()

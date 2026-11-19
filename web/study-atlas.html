@@ -218,6 +218,7 @@ th{font-size:11px;letter-spacing:.15px;color:#61786b;background:#f6f9f7}
 .paper-result-actions { display:flex; flex-wrap:wrap; gap:8px; }
 #paperTable { width:max-content; }
 #paperTableViewport { touch-action:pan-x pan-y; overflow-anchor:none; margin-top:6px; }
+
 .paper-zoom-controls { display:flex; align-items:center; justify-content:flex-end; gap:4px; margin-top:8px; }
 #paper .paper-zoom-controls button { min-width:30px; min-height:30px; padding:3px 7px; font-size:12px; }
 #paper .paper-zoom-controls button:disabled { opacity:.45; cursor:default; }
@@ -229,6 +230,14 @@ th{font-size:11px;letter-spacing:.15px;color:#61786b;background:#f6f9f7}
 .paper-result-line span { white-space:nowrap; }
 #paperTable .difficulty-line .difficulty-badge { margin:1px auto; }
 #paperTable .paper-result-edit { min-width:24px; min-height:24px; padding:1px 4px; line-height:1; font-size:13px; }
+@media(min-width:900px){
+  #paperTableViewport { container-type:inline-size; }
+  #paperTable { min-width:100cqw; }
+  #paperTable tr>:first-child { width:60px; }
+  #paperTable tr>:last-child:not([colspan]) { width:100px; }
+  #paperTable .paper-cell { width:max(75px,calc((100cqw - 160px) / var(--paper-question-count, 6))); }
+  #paperTable .paper-tag-list { max-width:none; }
+}
 #tagGroupField[hidden], #paperFilterGroupField[hidden] { display:none; }
 #tagCatalog .tag-group { margin:12px 0 4px; font-size:12px; color:var(--muted); }
 </style><link rel="stylesheet" href="./theme.css"></head><body><aside class="sidebar"><a class="brand" href="#study"><span class="mark">S</span><span>Study <strong>Atlas</strong></span></a><p class="workspace">WORKSPACE</p><nav aria-label="学習管理の画面"><a href="#study"><span class="nav-icon" aria-hidden="true">◷</span><span>勉強時間</span></a><a href="#scores"><span class="nav-icon" aria-hidden="true">▤</span><span>過去問・模試</span></a><a href="#near-goals"><span class="nav-icon" aria-hidden="true">✦</span><span>目先の目標</span></a><a href="#goals"><span class="nav-icon" aria-hidden="true">◎</span><span>目標設定</span></a><a href="#paper"><span class="nav-icon" aria-hidden="true">▦</span><span>過去問埋め</span></a><a href="#tasks"><span class="nav-icon" aria-hidden="true">✓</span><span>期日付きタスク</span></a><a href="#tag-settings"><span class="nav-icon" aria-hidden="true">♧</span><span>タグ追加</span></a><a href="#data"><span class="nav-icon" aria-hidden="true">⚙</span><span>設定</span></a></nav><div class="sidebar-bottom">日々の積み重ねを、<br>ひとつの場所に。<br><a href="./">Anki Atlas に戻る →</a></div></aside><main><div class="topbar"><span>ワークスペース　/　<strong id="pageTitle">勉強時間</strong></span><a href="./">Anki Atlas ↗</a></div><div class="content"><div id="saveError" class="save-error" role="alert" hidden><span id="saveErrorText"></span><button type="button" id="saveErrorDismiss" class="secondary">閉じる</button></div><p id="syncState" class="sync-state" role="status">GitHubとの接続を確認しています…</p><div class="intro"><span class="eyebrow">STUDY WORKSPACE</span><h1 id="headingTitle">勉強時間</h1><p id="headingDescription">日々の学習を記録して、積み重ねを振り返りましょう。</p></div>
@@ -822,6 +831,7 @@ function renderPapers(){
  const savedTags=[...new Set(entries.flatMap(row=>Object.values(row.tagsByQuestion||{}).flat()).filter(x=>typeof x==='string'))],categories=subject.value==='理科'?['物理','化学']:subject.value?[subject.value]:[],filterPicker=makeTagPicker(categories,[...new Set([...paperFilterTags,...savedTags])]);for(const checkbox of filterPicker.querySelectorAll('input'))checkbox.checked=paperFilterTags.includes(checkbox.value);const updateFilterSummary=()=>{filterPicker.querySelector('summary').textContent=paperFilterTags.length?paperFilterTags.join('・'):'タグを選択'};updateFilterSummary();filterPicker.addEventListener('change',()=>{paperFilterTags=readPicker(filterPicker);updateFilterSummary();applyPaperFilters()});$('#paperFilterTags').replaceChildren(filterPicker);
  renderPaperGroupFilter(categories);
  const cols=paperQuestionColumns(subject.value);for(const row of entries)for(const name of [...Object.keys(row.statuses||{}),...Object.keys(row.tagsByQuestion||{}),...Object.keys(row.resultsByQuestion||{})])if(!cols.includes(name))cols.push(name);const table=$('#paperTable');
+ table.style.setProperty('--paper-question-count',Math.max(1,cols.length));
  const head=el('thead',''),h=el('tr','');for(const t of ['年度',...cols,'操作']){const cell=el('th',t);cell.scope='col';h.append(cell)}head.append(h);
  const body=el('tbody','');let done=0,review=0,total=0;
  for(const row of entries){const record=paperScoreRecord(row,data.scores),tr=el('tr',''),year=el('th',String(row.year));year.scope='row';tr.append(year);
