@@ -222,7 +222,13 @@ th{font-size:11px;letter-spacing:.15px;color:#61786b;background:#f6f9f7}
 #paperMatchesWrap { margin-top:6px; }
 #paperMatchesTable th, #paperMatchesTable td { padding:6px clamp(4px,1vw,12px); }
 #paperMatchesTable .paper-match-time { white-space:nowrap; }
- .paper-match-legend { display:flex; flex-wrap:wrap; gap:5px 12px; margin:5px 0; font-size:12px; }
+ #paperTopicIndex { margin:14px 0; padding:9px 10px; border:1px solid var(--line); border-radius:9px; }
+#paperTopicIndex summary { cursor:pointer; font-weight:650; overflow-wrap:anywhere; }
+#paperTopicLists h3 { margin:14px 0 5px; }
+#paperTopicLists details { border-top:1px solid var(--line); padding:7px 0; }
+#paperTopicLists .table-wrap { margin:5px 0; }
+#paperTopicLists th, #paperTopicLists td { padding:6px clamp(4px,1vw,12px); }
+.paper-match-legend { display:flex; flex-wrap:wrap; gap:5px 12px; margin:5px 0; font-size:12px; }
 .paper-match-key { display:inline-block; width:12px; height:12px; border:1px solid var(--line); border-radius:3px; vertical-align:middle; margin-right:4px; }
 #paperTable { width:max-content; }
 #paperTableViewport { touch-action:pan-x pan-y; overflow-anchor:none; margin-top:6px; }
@@ -266,7 +272,10 @@ th{font-size:11px;letter-spacing:.15px;color:#61786b;background:#f6f9f7}
   <p id="paperMatchesCount" class="muted" role="status"></p>
   <p class="paper-match-legend muted"><span><i class="paper-match-key paper-solved" aria-hidden="true"></i>解いた</span><span><i class="paper-match-key paper-review" aria-hidden="true"></i>要復習</span><span><i class="paper-match-key" aria-hidden="true"></i>未着手</span></p>
   <div class="table-wrap" id="paperMatchesWrap"><table id="paperMatchesTable" aria-label="タグで絞り込んだ問題"></table></div>
-</div><p class="muted" id="paperReference"></p><div class="paper-zoom-controls" role="group" aria-label="過去問表の拡大・縮小">
+</div><details id="paperTopicIndex">
+  <summary>分野別の問題一覧</summary>
+  <div id="paperTopicLists"></div>
+</details><p class="muted" id="paperReference"></p><div class="paper-zoom-controls" role="group" aria-label="過去問表の拡大・縮小">
   <button type="button" class="secondary" id="paperZoomOut" aria-label="表を縮小">−</button>
   <button type="button" class="secondary" id="paperZoomReset" aria-label="表の倍率を100%に戻す">100%</button>
   <button type="button" class="secondary" id="paperZoomIn" aria-label="表を拡大">＋</button>
@@ -311,10 +320,10 @@ function validPaperResults(results){
 const subjectTagGroups={
   数学:{
     数学Ⅰ:['数と式','二次関数','論証','式と方程式','方程式・不等式・領域','関数'],
-    数学Ⅱ:['式と方程式','方程式・不等式・領域','図形と方程式','図形と式','三角関数','関数','整式の微積分','微積分','3, 4次関数'],
-    数学Ⅲ:['極限','微分法','積分（体積除く）','積分と体積','体積','極限・微分','図形および数列と極限','微積分','関数'],
     数学A:['整数','場合の数・確率','幾何','空間図形'],
+    数学Ⅱ:['式と方程式','方程式・不等式・領域','図形と方程式','図形と式','三角関数','関数','整式の微積分','微積分','3, 4次関数'],
     数学B:['数列','図形および数列と極限','微分方程式・確率分布ほか'],
+    数学Ⅲ:['極限','微分法','積分（体積除く）','積分と体積','体積','極限・微分','図形および数列と極限','微積分','関数'],
     数学C:['平面ベクトル','ベクトル','空間図形','複素平面','二次曲線','行列・一次変換','行列'],
     '旧課程・範囲外を含む':['微分方程式・確率分布ほか','行列・一次変換','行列'],
   },
@@ -824,27 +833,85 @@ function renderPaperMatches(active){
   section.hidden=!active;
   if(!active)return;
   const matches=[...document.querySelectorAll('#paperTable .paper-cell:not(.paper-filtered)')]
-    .map(cell=>cell.dataset)
-    .sort((a,b)=>Number(b.year)-Number(a.year)||a.question.localeCompare(b.question,'ja',{numeric:true}));
+    .map(cell=>cell.dataset);
+  matches.sort(comparePaperQuestions);
   $('#paperMatchesCount').textContent=matches.length?matches.length+'問 · 年度の新しい順':'条件に合う問題がありません。';
   wrap.hidden=!matches.length;
-  if(!matches.length)return;
-  const rows=matches.map(({year,question,difficulty,expectedMinutes,score,minutes})=>{
+  if(matches.length)renderPaperQuestionList($('#paperMatchesTable'),matches);
+}
+function comparePaperQuestions(a,b){
+  return Number(b.year)-Number(a.year)||a.question.localeCompare(b.question,'ja',{numeric:true});
+}
+function renderPaperQuestionList(table,questions){
+  const rows=questions.map(({year,question,difficulty,expectedMinutes,score,minutes})=>{
     const time=Number(expectedMinutes);
     const duration=el('span',expectedMinutes===''?'—':timeSymbols(time)||time+'分','paper-match-time');
     if(expectedMinutes!=='')duration.title=time+'分';
     return [year,question,difficulty||'—',duration,score===''?'—':score+'点',minutes===''?'—':minutes+'m'];
   });
-  const table=$('#paperMatchesTable');
   tableRows(table,['年度','問題','難易度','目安','点数','実測'],rows);
   [...table.tBodies[0].rows].forEach((row,index)=>{
-    const {state,year}=matches[index];
+    const {state,year}=questions[index];
     row.className='paper-match-row';
     row.classList.toggle('paper-solved',state==='done');
     row.classList.toggle('paper-review',state==='review');
     row.cells[0].setAttribute('aria-label',year+'年度、'+(paperStatuses[state]||paperStatuses.new));
   });
 }
+const paperTopicIndex=$('#paperTopicIndex');
+function renderPaperTopicIndex(){
+  const root=$('#paperTopicLists');
+  const openTags=new Set([...root.querySelectorAll('details[open]')].map(details=>details.dataset.key));
+  const byTag=new Map();
+  for(const cell of document.querySelectorAll('#paperTable .paper-cell')){
+    const category=cell.dataset.tagCategory;
+    const tags=new Set(JSON.parse(cell.dataset.tags||'[]'));
+    for(const tag of tags){
+      const key=JSON.stringify([category,tag]);
+      if(!byTag.has(key))byTag.set(key,{key,category,tag,questions:[]});
+      byTag.get(key).questions.push(cell.dataset);
+    }
+  }
+  root.replaceChildren();
+  if(!byTag.size){
+    root.append(el('p','この試験・教科にタグ付きの問題はありません。','muted'));
+    return;
+  }
+  const categories=[...new Set([...byTag.values()].map(item=>item.category))];
+  for(const category of categories){
+    const groupNames=tagGroupNames(category);
+    const tags=[...byTag.values()].filter(item=>item.category===category)
+      .sort((a,b)=>a.tag.localeCompare(b.tag,'ja'));
+    const groupFor=tag=>tagGroupsFor(category,tag)[0];
+    for(const group of groupNames.length?[...groupNames,'未分類']:['']){
+      const members=tags.filter(({tag})=>!group||groupFor(tag)===group);
+      if(!members.length)continue;
+      root.append(el('h3',categories.length>1&&group?category+' / '+group:group||category));
+      for(const {key,tag,questions} of members){
+        const details=el('details',''),summary=el('summary',tag+'（'+questions.length+'問）');
+        const wrap=el('div','','table-wrap');
+        details.dataset.key=key;
+        details.append(summary,wrap);
+        const additionalGroups=tagGroupsFor(category,tag).slice(1);
+        if(additionalGroups.length)summary.append(el('small',' · '+additionalGroups.join('・'),'muted'));
+        const showQuestions=()=>{
+          if(!details.open||wrap.childElementCount)return;
+          const table=el('table','');
+          table.setAttribute('aria-label',tag+'の問題');
+          renderPaperQuestionList(table,questions.sort(comparePaperQuestions));
+          wrap.append(table);
+        };
+        details.open=openTags.has(key);
+        details.addEventListener('toggle',showQuestions);
+        showQuestions();
+        root.append(details);
+      }
+    }
+  }
+}
+paperTopicIndex.addEventListener('toggle',()=>{
+  if(paperTopicIndex.open)renderPaperTopicIndex();
+});
 function renderPaperStats(){
  const subject=$('#paperSubject').value;
  const cells=[...document.querySelectorAll('#paperTable td.paper-cell')].filter(cell=>countsTowardsPaperProgress(subject,Number(cell.dataset.year)));
@@ -947,6 +1014,7 @@ function renderPapers(){
  }
  const td=el('td','');const del=el('button','年度を削除','danger');del.type='button';del.onclick=()=>{if(confirm(row.exam+' '+row.subject+' '+row.year+'年度の記録を削除しますか？')){data.pastPapers=paperEntries().filter(x=>x.id!==row.id);save()}};td.append(del);tr.append(td);body.append(tr)}
  if(!entries.length){const tr=el('tr',''),td=el('td','年度を追加するとここに表示されます');td.colSpan=cols.length+2;tr.append(td);body.append(tr)}table.replaceChildren(head,body);applyPaperFilters();
+ if(paperTopicIndex.open)renderPaperTopicIndex();
  $('#paperReference').textContent=subject.value==='数学'?'※は「数学(前期)」の参考値です。大学・試験名は自動では照合しません。時間は別の取組の記録の場合があります。':subject.value==='理科'?'※は「理科過去問」シートの年度別参考値です。大学・試験名は自動では照合しません。':'';
  $('#paperSummary').textContent=total?(subject.value==='数学'?'2000年度以降 · ':'')+'全'+total+'問 · 解いた '+done+'問 · 要復習 '+review+'問 · 未着手 '+(total-done-review)+'問':entries.length&&subject.value==='数学'?'2000年度以降の集計対象がありません。':'年度を追加して進捗を記録しましょう。';
 }
