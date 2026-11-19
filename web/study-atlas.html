@@ -222,6 +222,15 @@ th{font-size:11px;letter-spacing:.15px;color:#61786b;background:#f6f9f7}
 #paperMatchesWrap { margin-top:6px; }
 #paperMatchesTable th, #paperMatchesTable td { padding:6px clamp(4px,1vw,12px); }
 #paperMatchesTable .paper-match-time { white-space:nowrap; }
+.paper-match-state { display:inline-block; width:12px; height:12px; border-radius:50%; font-size:0; overflow:hidden; vertical-align:middle; }
+.paper-match-state[data-state="done"] { background:#2d8354; }
+.paper-match-state[data-state="review"] { background:#bb5050; }
+.paper-match-state[data-state="new"] { background:#6d7b74; }
+:root[data-theme="dark"] .paper-match-state[data-state="done"] { background:#82cea1; }
+:root[data-theme="dark"] .paper-match-state[data-state="review"] { background:#f18b8b; }
+:root[data-theme="dark"] .paper-match-state[data-state="new"] { background:#9aa7a1; }
+.paper-match-legend { display:flex; flex-wrap:wrap; gap:5px 12px; margin:5px 0; font-size:12px; }
+.paper-match-legend .paper-match-state { margin-right:4px; }
 #paperTable { width:max-content; }
 #paperTableViewport { touch-action:pan-x pan-y; overflow-anchor:none; margin-top:6px; }
 
@@ -259,6 +268,7 @@ th{font-size:11px;letter-spacing:.15px;color:#61786b;background:#f6f9f7}
 <section id="goals" hidden data-exam-format="secondary"><div class="exam-format-switch" role="group" aria-label="目標設定の試験形式"><button type="button" class="secondary" data-exam-format-choice="secondary" aria-pressed="true">二次試験</button><button type="button" class="secondary" data-exam-format-choice="common" aria-pressed="false">共通テスト</button></div><div class="goals-section-heading"><span class="goals-kicker">SCORE GOALS</span><h2>目標設定</h2><p>教科ごとの目標を決めて、得点の伸びを振り返りましょう。</p></div><form id="goalsForm"><div class="goals-form-heading"><h3>教科ごとの目標点</h3><p>死守・目標・理想の3段階で設定できます。空欄は未設定です。</p></div><div class="goals-level-guide" aria-label="目標点の3段階"><span class="goal-level-floor">死守 <small>確保したい点数</small></span><span class="goal-level-target">目標 <small>目指す点数</small></span><span class="goal-level-ideal">理想 <small>さらに伸ばしたい点数</small></span></div><div id="goalSubjectInputs" class="goals-subject-grid"></div><p id="goalsScienceHint" class="goals-form-hint">理科は直接入力するか、物理・化学の両方を入力してください。両方ある場合は理科の入力値を合計に使います。</p><fieldset class="goals-total"><legend>合計の目標点 <small id="goalTotalMax">/ 440点</small></legend><div class="goals-level-inputs"><label class="goal-level goal-level-floor"><span>死守</span><input type="number" id="goalTotal-floor" name="合計-floor" min="0" max="440" step="any" placeholder="未設定" aria-label="合計 死守" aria-describedby="goalTotalNote-floor"><small id="goalTotalNote-floor"></small></label><label class="goal-level goal-level-target"><span>目標</span><input type="number" id="goalTotal-target" name="合計-target" min="0" max="440" step="any" placeholder="未設定" aria-label="合計 目標" aria-describedby="goalTotalNote-target"><small id="goalTotalNote-target"></small></label><label class="goal-level goal-level-ideal"><span>理想</span><input type="number" id="goalTotal-ideal" name="合計-ideal" min="0" max="440" step="any" placeholder="未設定" aria-label="合計 理想" aria-describedby="goalTotalNote-ideal"><small id="goalTotalNote-ideal"></small></label></div><p class="goals-form-hint">教科別の入力から自動計算します。合計を直接入力することもできます。入力した合計を消すと自動計算に戻ります。</p></fieldset><p class="goals-form-hint">点数は「死守 ≦ 目標 ≦ 理想」の順に入力してください。設定した目標は、教科別の推移のグラフにラインと背景色で表示します。</p><div class="goals-form-actions"><button type="submit">目標を保存</button><p id="goalsStatus" class="status" role="status"></p></div></form><p class="goals-save-note muted">変更は端末に保存され、GitHubに接続中は自動で同期されます。同期状態は画面上部で確認できます。</p></section><section id="paper" hidden><h2>過去問埋め</h2><p class="muted">大学・試験と科目ごとに年度を追加し、大問の状態を記録します。</p><form id="paperForm"><label>大学・試験名<input name="exam" type="text" required maxlength="100" placeholder="例：東京大学 前期"></label><label>科目<select name="subject"><option>国語</option><option>数学</option><option>英語</option><option>理科</option></select></label><label>開始年度<input name="start" type="number" min="1900" max="2100" required></label><label>終了年度<input name="end" type="number" min="1900" max="2100" required></label><button>年度を追加</button></form><p class="muted">すでにある年度はそのまま残ります。最大100年分を一度に追加できます。</p><p id="paperEditStatus" class="status" role="status"></p><form id="paperEditForm" hidden><p style="flex-basis:100%">年度の情報を編集中です。大問の状態はそのまま保持します。</p><label>大学・試験名<input name="exam" type="text" required maxlength="100"></label><label>科目<select name="subject"><option>国語</option><option>数学</option><option>英語</option><option>理科</option></select></label><label>年度<input name="year" type="number" min="1900" max="2100" required></label><button>変更を保存</button><button id="paperEditCancel" type="button" class="secondary">編集をキャンセル</button></form><h3>進捗表</h3><div class="paper-filters"><label>大学・試験<select id="paperExam"></select></label><label>科目<select id="paperSubject"></select></label></div><div class="paper-filters paper-search" aria-label="問題の絞り込み"><label>タグ（すべて一致）<span id="paperFilterTags"></span></label><label id="paperFilterGroupField" hidden>タグの上位分類<select id="paperFilterGroup"></select></label><label>難易度<select id="paperFilterDifficulty"><option value="">すべて</option><option>A</option><option>B</option><option>C</option><option>D</option></select></label><label>所要時間（分・以上）<input id="paperFilterMin" type="number" min="0" step="5" placeholder="下限なし"></label><label>所要時間（分・以下）<input id="paperFilterMax" type="number" min="0" step="5" placeholder="上限なし"></label><button type="button" id="paperFilterClear" class="secondary">条件をクリア</button></div><p id="paperFilterStatus" role="status"></p><p class="muted">条件に合わない問題は薄く表示します。難易度・所要時間が未登録の問題は、条件を指定すると薄くなります。</p><p class="muted">問題の状態はセルの背景色で表示します。</p><p class="muted" id="paperSummary" role="status"></p><div id="paperStats" class="muted" aria-live="polite"></div><div id="paperMatches" hidden>
   <h3>条件に合う問題</h3>
   <p id="paperMatchesCount" class="muted" role="status"></p>
+  <p class="paper-match-legend muted"><span><i class="paper-match-state" data-state="done" aria-hidden="true"></i>解いた</span><span><i class="paper-match-state" data-state="review" aria-hidden="true"></i>要復習</span><span><i class="paper-match-state" data-state="new" aria-hidden="true"></i>未着手</span></p>
   <div class="table-wrap" id="paperMatchesWrap"><table id="paperMatchesTable" aria-label="タグで絞り込んだ問題"></table></div>
 </div><p class="muted" id="paperReference"></p><div class="paper-zoom-controls" role="group" aria-label="過去問表の拡大・縮小">
   <button type="button" class="secondary" id="paperZoomOut" aria-label="表を縮小">−</button>
@@ -796,7 +806,13 @@ function renderPaperMatches(active){
     const time=Number(expectedMinutes);
     const duration=el('span',expectedMinutes===''?'—':timeSymbols(time)||time+'分','paper-match-time');
     if(expectedMinutes!=='')duration.title=time+'分';
-    return [year,question,difficulty||'—',duration,paperStatuses[state]||paperStatuses.new];
+    const key=Object.hasOwn(paperStatuses,state)?state:'new';
+    const status=el('span',paperStatuses[key],'paper-match-state');
+    status.dataset.state=key;
+    status.title=paperStatuses[key];
+    status.setAttribute('role','img');
+    status.setAttribute('aria-label',paperStatuses[key]);
+    return [year,question,difficulty||'—',duration,status];
   });
   tableRows($('#paperMatchesTable'),['年度','問題','難易度','所要時間','状態'],rows);
 }
