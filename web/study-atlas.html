@@ -862,7 +862,6 @@ function renderPapers(){
      }
      td.append(line);
    }
-   if(filterTime!=='')td.append(el('div','目安 '+filterTime+'分'+(linked?.expectedMinutes==null?'※':''),'paper-reference'));
  }
  const selectedTags=row.tagsByQuestion?.[name]||[];
  td.dataset.tags=JSON.stringify(selectedTags);
