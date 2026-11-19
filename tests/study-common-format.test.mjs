@@ -4,7 +4,7 @@ const source=readFileSync(new URL('../web/study-atlas.html',import.meta.url),'ut
 const line=key=>{const i=source.indexOf(key);assert(i>=0,key);return source.slice(i,source.indexOf('\n',i))};
 const block=(a,b)=>source.slice(source.indexOf(a),source.indexOf(b,source.indexOf(a)));
 const helpers=block('const goalMax=','const goalLabels=').replace(/function setExamFormat[\s\S]*/,'');
-const code=helpers+'\n'+['const presets=','function sumDecimal(','function completeSum(','function selfScoreValue(','const complete=','function questionTotals(','function scienceSubjectView(','function scoreGoalFor(','function goalTotalFor(','const resultSubjects=','const resultTotal=','function totalExamPoints(','function validCommonGoals(','const validNearGoalDate=','function validNearGoalSubjects(','const valid=x=>'].map(line).join('\n')+'\n'+block('function completeExamSets(','function deleteButton(')+'\n'+block('function nearGoals(data','function nearGoalTargetGaps(');
+const code=helpers+'\n'+block('const scienceTagGroups=','const valid=x=>')+'\n'+['const presets=','function sumDecimal(','function completeSum(','function selfScoreValue(','const complete=','function questionTotals(','function scienceSubjectView(','function scoreGoalFor(','function goalTotalFor(','const resultSubjects=','const resultTotal=','function totalExamPoints(','function validCommonGoals(','const validNearGoalDate=','function validNearGoalSubjects(','const valid=x=>'].map(line).join('\n')+'\n'+block('function completeExamSets(','function deleteButton(')+'\n'+block('function nearGoals(data','function nearGoalTargetGaps(');
 new Function('assert',`const $=id=>id==='#scoreForm'?{elements:{kind:{value:'模試'}}}:{value:'standard'};let data={scoreGoals:{英語:{target:70}},commonScoreGoals:{英語R:{target:80}}};${code}
 assert.equal(examFormatOf({}),'secondary');
 activeExamFormat='common';
@@ -23,6 +23,10 @@ assert.equal(totalExamPoints([...common,...second])[0].values.reduce((a,b)=>a+b,
 assert.equal(completeExamSets(common.slice(1)).length,0);
 const fixture={studies:[],scores:[...common,...second],tasks:[]};
 assert(valid(fixture));
+assert(valid({...fixture,tagGroups:{物理:{斜方投射:'力学'},化学:{金属:'無機'}}}));
+assert(!valid({...fixture,tagGroups:{物理:{斜方投射:'理論'}}}));
+assert.equal(scienceTagGroup('物理','力学的波動'),'波動');
+assert.equal(scienceTagGroup('化学','結晶'),'理論');
 assert(!valid({...fixture,scores:[{...common[0],examFormat:'invalid'}]}));
 assert(!valid({...fixture,commonScoreGoals:{英語R:{target:101}}}));
 activeExamFormat='secondary';
