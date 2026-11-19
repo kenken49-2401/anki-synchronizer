@@ -135,8 +135,14 @@ with sync_playwright() as playwright:
         group.select_option("化学:理論")
         assert page.locator("#paperTable .paper-cell:not(.paper-filtered) .paper-result-edit").first.get_attribute("aria-label").startswith("1999年度 化学1")
         page.locator("#paperSubject").select_option("数学")
-        assert not group.is_visible()
+        assert group.is_visible()
         assert group.input_value() == ""
+        for group_name in ("数学Ⅱ", "数学Ⅲ"):
+            group.select_option("数学:" + group_name)
+            assert page.locator("#paperMatchesTable tbody tr").count() == 1
+            assert cell.get_by_text("微積分", exact=True).is_visible()
+        page.locator("#paperFilterClear").click()
+        assert page.locator("#paperTable .paper-result-edit").all_text_contents() == ["✎"] * 18
         viewport = page.locator("#paperTableViewport")
         table = page.locator("#paperTable")
         original_width = table.bounding_box()["width"]
