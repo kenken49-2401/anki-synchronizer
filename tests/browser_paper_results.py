@@ -56,7 +56,11 @@ with sync_playwright() as playwright:
         cell = page.locator("#paperTable tbody .paper-cell").first
         edit = cell.locator(".paper-result-edit")
         assert not dialog.is_visible()
-        result = cell.locator(".difficulty-badge + .paper-result-value")
+        marks = cell.locator(".difficulty-badge + .paper-time-symbols")
+        assert marks.inner_text() == "**°"
+        result = cell.locator(".difficulty-line + .paper-result-line .paper-result-value")
+        row_box = cell.locator(".difficulty-line").bounding_box()
+        assert result.bounding_box()["y"] >= row_box["y"] + row_box["height"] - 1
         assert result.inner_text() == "0点(18m)"
         assert result.evaluate("e => getComputedStyle(e).color") == "rgb(0, 0, 0)"
         assert "過去問結果" not in cell.inner_text()
