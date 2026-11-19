@@ -56,7 +56,9 @@ with sync_playwright() as playwright:
         cell = page.locator("#paperTable tbody .paper-cell").first
         edit = cell.locator(".paper-result-edit")
         assert not dialog.is_visible()
-        assert cell.locator(".paper-linked-result").inner_text() == "過去問結果 18分 / 0点"
+        assert cell.locator(".paper-result-line span").all_text_contents() == ["18分", "0点"]
+        assert "過去問結果" not in cell.inner_text()
+        assert cell.bounding_box()["width"] < 100
         picker = page.locator("#paperFilterTags")
         picker.locator("summary").click()
         picker.get_by_label("整数", exact=True).check()
@@ -78,7 +80,7 @@ with sync_playwright() as playwright:
         dialog.get_by_role("button", name="保存", exact=True).click()
         assert not dialog.is_visible()
         assert cell.get_attribute("data-state") == "review"
-        assert "実測 35分 / 0点" in cell.inner_text()
+        assert cell.locator(".paper-result-line span").all_text_contents() == ["35分", "0点"]
         page.reload()
         assert not dialog.is_visible()
         edit.click()
@@ -94,7 +96,7 @@ with sync_playwright() as playwright:
         dialog.get_by_label("所要時間").fill("24")
         dialog.get_by_role("button", name="保存", exact=True).click()
         assert third.get_attribute("data-state") == "new"
-        assert "実測 24分" in third.inner_text()
+        assert third.locator(".paper-result-line span").all_text_contents() == ["24分"]
         assert page.evaluate("document.documentElement.scrollWidth === innerWidth")
         assert page.locator("#paperTable th[scope=row]").all_text_contents() == ["2025", "2000", "1999"]
         assert "2000年度以降 · 全12問 · 解いた 1問 · 要復習 2問" in page.locator("#paperSummary").inner_text()
