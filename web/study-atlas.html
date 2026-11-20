@@ -239,7 +239,12 @@ th{font-size:11px;letter-spacing:.15px;color:#61786b;background:#f6f9f7}
 #paperTable th, #paperTable td { padding:4px 5px; }
 #paperTable .paper-cell { width:75px; min-width:48px; white-space:normal; }
 #paperTable .paper-reference { min-width:0; }
-#paperTable .paper-tag-list { max-width:75px; gap:2px; margin-top:1px; }
+/* The table zoom also scales tag text. Keep mobile text inflation from overriding it. */
+#paperTable .paper-tag-list {
+  max-width:75px; gap:2px; margin-top:1px;
+  -webkit-text-size-adjust:none;
+  text-size-adjust:none;
+}
 .paper-result-line { display:flex; align-items:center; justify-content:center; flex-wrap:wrap; gap:2px; font-size:11px; line-height:1.25; }
 #paperTable .difficulty-line .difficulty-badge { margin:0; }
 .paper-result-value { color:#000; font-size:11px; white-space:nowrap; }
