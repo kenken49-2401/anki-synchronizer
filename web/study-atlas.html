@@ -321,11 +321,11 @@ const subjectTagGroups={
   数学:{
     数学Ⅰ:['数と式','二次関数','論証','式と方程式','方程式・不等式・領域','関数'],
     数学A:['整数','場合の数・確率','幾何','空間図形'],
-    数学Ⅱ:['式と方程式','方程式・不等式・領域','図形と方程式','図形と式','三角関数','関数','整式の微積分','微積分','3, 4次関数'],
-    数学B:['数列','図形および数列と極限','微分方程式・確率分布ほか'],
-    数学Ⅲ:['極限','微分法','積分（体積除く）','積分と体積','体積','極限・微分','図形および数列と極限','微積分','関数'],
-    数学C:['平面ベクトル','ベクトル','空間図形','複素平面','二次曲線','行列・一次変換','行列'],
-    '旧課程・範囲外を含む':['微分方程式・確率分布ほか','行列・一次変換','行列'],
+    数学Ⅱ:['式と方程式','方程式・不等式・領域','図形と方程式','三角関数','関数','整式の微積分','微積分','3, 4次関数'],
+    数学B:['数列','確率分布'],
+    数学Ⅲ:['極限','積分（体積除く）','積分と体積','体積','極限・微分','微積分','関数'],
+    数学C:['平面ベクトル','ベクトル','空間図形','複素平面','二次曲線','行列'],
+    学習指導要領外:['微分・積分方程式','行列・一次変換'],
   },
   物理:{
     力学:['単振動','中心力場','力学その他','二体問題','運動方程式・力のつりあい','運動量保存・衝突','円運動・万有引力'],
@@ -346,15 +346,21 @@ function tagGroupNames(category){
 function tagGroupsFor(category,tag){
   const custom=data.tagGroups?.[category];
   const groups=tagGroupNames(category);
-  if(custom&&Object.hasOwn(custom,tag)&&groups.includes(custom[tag]))return [custom[tag]];
+  if(custom&&Object.hasOwn(custom,tag)){
+    const group=normalizeTagGroup(category,custom[tag]);
+    if(groups.includes(group))return [group];
+  }
   const matches=groups.filter(group=>subjectTagGroups[category][group].includes(tag));
   return matches.length?matches:['未分類'];
+}
+function normalizeTagGroup(category,group){
+  return category==='数学'&&group==='旧課程・範囲外を含む'?'学習指導要領外':group;
 }
 function validTagGroups(value){
   const object=x=>x&&typeof x==='object'&&!Array.isArray(x);
   return value===undefined||object(value)&&Object.entries(value).every(([category,items])=>
     Object.hasOwn(subjectTagGroups,category)&&object(items)&&Object.entries(items).every(([tag,group])=>
-      tag.trim()&&tag.length<=50&&tagGroupNames(category).includes(group)));
+      tag.trim()&&tag.length<=50&&tagGroupNames(category).includes(normalizeTagGroup(category,group))));
 }
 const valid=x=>x && validTagGroups(x.tagGroups) && (x.commonScoreGoals===undefined||validCommonGoals(x.commonScoreGoals)) && (x.nearGoals===undefined || (Array.isArray(x.nearGoals) && x.nearGoals.length<=500 && x.nearGoals.every(g=>g && typeof g.id==='string' && typeof g.name==='string' && g.name.length<=100 && validNearGoalDate(g.date) && Number.isFinite(g.target) && g.target>=0 && g.target<=100000 && (g.examFormat===undefined||['secondary','common'].includes(g.examFormat))&&validNearGoalSubjects(g.subjectTargets,g.examFormat)&&(g.examFormat!=='common'||g.target<=1000) && typeof g.issue==='string' && g.issue.length<=300 && typeof g.action==='string' && g.action.length<=300))) && (x.hiddenTags===undefined || (x.hiddenTags && typeof x.hiddenTags==='object' && !Array.isArray(x.hiddenTags) && Object.values(x.hiddenTags).every(a=>Array.isArray(a) && a.every(t=>typeof t==='string' && t.length<=300)))) && (x.tagCatalog===undefined || (x.tagCatalog && typeof x.tagCatalog==='object' && !Array.isArray(x.tagCatalog) && Object.values(x.tagCatalog).every(a=>Array.isArray(a) && a.every(t=>typeof t==='string' && t.length<=50)))) && (x.pastPapers===undefined || (Array.isArray(x.pastPapers) && x.pastPapers.every(p=>p && typeof p.id==='string' && typeof p.exam==='string' && typeof p.subject==='string' && Number.isInteger(p.year) && p.year>=1900 && p.year<=2100 && p.statuses && typeof p.statuses==='object' && !Array.isArray(p.statuses) && Object.values(p.statuses).every(v=>['new','done','review'].includes(v)) && validPaperResults(p.resultsByQuestion)))) && ['studies','scores','tasks'].every(k=>Array.isArray(x[k])) && x.studies.every(x=>x&&typeof x.id==='string'&&typeof x.date==='string'&&typeof x.subject==='string'&&Number.isFinite(x.minutes)&&x.minutes>0) && x.scores.every(x=>x&&typeof x.id==='string'&&(x.examFormat===undefined||['secondary','common'].includes(x.examFormat))&&typeof x.date==='string'&&typeof x.name==='string'&&typeof x.subject==='string'&&Number.isFinite(x.score)&&Number.isFinite(x.max)&&x.max>0&&x.score>=0&&x.score<=x.max&&(x.questions===undefined||Array.isArray(x.questions)&&x.questions.every(q=>q&&typeof q==='object'&&!Array.isArray(q)))) && x.tasks.every(x=>x&&typeof x.id==='string'&&typeof x.date==='string'&&typeof x.title==='string'&&typeof x.done==='boolean'&&(x.priority===undefined||['high','medium','low'].includes(x.priority)));
 try{const s=localStorage.getItem(KEY);if(s){const parsed=JSON.parse(s);if(valid(parsed)){data=migrateScienceTags(parsed);const migrated=JSON.stringify(data);if(migrated!==s){markDataPending();localStorage.setItem(KEY,migrated)}}else throw Error()}}catch(e){$('#status').textContent='保存データを読み込めませんでした。バックアップを確認してください。'}
