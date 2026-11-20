@@ -497,7 +497,8 @@ function makeTagOptions(container,categories,chosen,onChange){
   for(const category of categories)for(const [group,tags] of groupedTagChoices(category)){
     const choices=tags.filter(tag=>!visible.has(tag));
     if(!choices.length)continue;
-    container.append(el('p',group?category+' / '+group:category,'tag-group'));
+    const heading=group&&category!=='数学'?category+' / '+group:group||category;
+    container.append(el('p',heading,'tag-group'));
     choices.forEach(addTag);
   }
   const legacy=[...new Set(chosen)].filter(tag=>!visible.has(tag));
@@ -892,7 +893,7 @@ function renderPaperTopicIndex(){
     for(const group of groupNames.length?[...groupNames,'未分類']:['']){
       const members=tags.filter(({tag})=>!group||groupFor(tag)===group);
       if(!members.length)continue;
-      root.append(el('h3',categories.length>1&&group?category+' / '+group:group||category));
+      root.append(el('h3',categories.length>1&&group&&category!=='数学'?category+' / '+group:group||category));
       for(const {key,tag,questions} of members){
         const details=el('details',''),summary=el('summary',tag+'（'+questions.length+'問）');
         const wrap=el('div','','table-wrap');
