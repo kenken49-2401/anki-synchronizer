@@ -222,6 +222,7 @@ th{font-size:11px;letter-spacing:.15px;color:#61786b;background:#f6f9f7}
 #paperMatchesWrap { margin-top:6px; }
 #paperMatchesTable th, #paperMatchesTable td { padding:6px clamp(4px,1vw,12px); }
 #paperMatchesTable .paper-match-time { white-space:nowrap; }
+.paper-match-row .paper-result-edit { min-width:32px; min-height:32px; padding:2px 6px; line-height:1; }
  #paperTopicIndex { margin:14px 0; padding:9px 10px; border:1px solid var(--line); border-radius:9px; }
 #paperTopicIndex summary { cursor:pointer; font-weight:650; overflow-wrap:anywhere; }
 #paperTopicLists h3 { margin:14px 0 5px; }
@@ -744,7 +745,10 @@ let paperResultEdit=null;
 
 function openPaperResult(row,name,trigger){
   const result=Object.hasOwn(row.resultsByQuestion||{},name)?row.resultsByQuestion[name]:null;
-  paperResultEdit={id:row.id,name,trigger,snapshot:JSON.stringify(row)};
+  paperResultEdit={
+    id:row.id,name,trigger,snapshot:JSON.stringify(row),
+    tableId:trigger.closest('table')?.id,topicKey:trigger.closest('details[data-key]')?.dataset.key
+  };
   $('#paperResultQuestion').textContent=row.exam+' '+row.year+'年度 · '+row.subject+' '+name;
   paperResultForm.elements.minutes.value=result?.minutes??'';
   paperResultForm.elements.score.value=result?.score??'';
@@ -760,9 +764,18 @@ paperResultDialog.addEventListener('close',()=>{
   const edit=paperResultEdit;
   paperResultEdit=null;
   if(!edit)return;
-  const rendered=[...document.querySelectorAll('#paperTable .paper-result-edit')]
+  if(edit.trigger.isConnected&&!edit.trigger.closest('[hidden]')){
+    edit.trigger.focus({preventScroll:true});
+    return;
+  }
+  const topic=edit.topicKey&&[...paperTopicIndex.querySelectorAll('details[data-key]')]
+    .find(details=>details.dataset.key===edit.topicKey);
+  const scope=topic||document.getElementById(edit.tableId);
+  const rendered=scope&&!scope.closest('[hidden]')&&[...scope.querySelectorAll('.paper-result-edit')]
     .find(button=>button.dataset.paperId===edit.id&&button.dataset.question===edit.name);
-  (edit.trigger.isConnected?edit.trigger:rendered)?.focus({preventScroll:true});
+  const fallback=edit.topicKey?topic?.querySelector('summary')||paperTopicIndex.querySelector('summary'):
+    edit.tableId==='paperMatchesTable'?$('#paperFilterTags summary'):null;
+  (rendered||fallback)?.focus({preventScroll:true});
 });
 paperResultForm.onsubmit=event=>{
   event.preventDefault();
@@ -825,15 +838,22 @@ function appendPaperResult(cell,row,name,state,recorded,reference,difficulty,exp
     cell.append(resultLine);
   }
   const editLine=el('div','','paper-result-line');
+  editLine.append(paperResultEditButton(row.id,row.year,name,state));
+  cell.append(editLine);
+}
+
+function paperResultEditButton(paperId,year,name,state){
   const button=el('button','✎','secondary paper-result-edit');
   button.type='button';
-  button.dataset.paperId=row.id;
+  button.dataset.paperId=paperId;
   button.dataset.question=name;
   button.title='点数・時間・タグを編集';
-  button.setAttribute('aria-label',row.year+'年度 '+name+'（'+paperStatuses[state]+'）の点数・時間・タグを編集');
-  button.onclick=()=>openPaperResult(row,name,button);
-  editLine.append(button);
-  cell.append(editLine);
+  button.setAttribute('aria-label',year+'年度 '+name+'（'+paperStatuses[state]+'）の点数・時間・タグを編集');
+  button.onclick=()=>{
+    const row=paperEntries().find(item=>String(item.id)===String(paperId));
+    if(row)openPaperResult(row,name,button);
+  };
+  return button;
 }
 
 let paperFilterTags=[];let paperFilterContext='';
@@ -901,13 +921,14 @@ function comparePaperQuestions(a,b){
   return Number(b.year)-Number(a.year)||a.question.localeCompare(b.question,'ja',{numeric:true});
 }
 function renderPaperQuestionList(table,questions){
-  const rows=questions.map(({year,question,difficulty,expectedMinutes,score,minutes})=>{
+  const rows=questions.map(({paperId,year,question,state,difficulty,expectedMinutes,score,minutes})=>{
     const time=Number(expectedMinutes);
     const duration=el('span',expectedMinutes===''?'—':timeSymbols(time)||time+'分','paper-match-time');
     if(expectedMinutes!=='')duration.title=time+'分';
-    return [year,question,difficulty||'—',duration,score===''?'—':score+'点',minutes===''?'—':minutes+'m'];
+    return [year,question,difficulty||'—',duration,score===''?'—':score+'点',minutes===''?'—':minutes+'m',
+      paperResultEditButton(paperId,year,question,state)];
   });
-  tableRows(table,['年度','問題','難易度','目安','点数','実測'],rows);
+  tableRows(table,['年度','問題','難易度','目安','点数','実測','操作'],rows);
   [...table.tBodies[0].rows].forEach((row,index)=>{
     const {state,year}=questions[index];
     row.className='paper-match-row';
@@ -1051,6 +1072,7 @@ function renderPapers(){
  }
  td.dataset.state=state;
  td.dataset.year=String(row.year);
+ td.dataset.paperId=row.id;
  td.dataset.question=name;
  td.dataset.tagCategory=categoryFor(subject.value,name);
  const mathIndex=Number(name)-1;
