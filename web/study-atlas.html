@@ -222,6 +222,10 @@ th{font-size:11px;letter-spacing:.15px;color:#61786b;background:#f6f9f7}
 #paperMatchesWrap { margin-top:6px; }
 #paperMatchesTable th, #paperMatchesTable td { padding:6px clamp(4px,1vw,12px); }
 #paperMatchesTable .paper-match-time { white-space:nowrap; }
+#paper :is(#paperTable,#paperMatchesTable,#paperTopicLists) .paper-year-highlight {
+  background:#d8e9ff;
+  color:#244768;
+}
 .paper-match-row .paper-result-edit { min-width:32px; min-height:32px; padding:2px 6px; line-height:1; }
  #paperTopicIndex { margin:14px 0; padding:9px 10px; border:1px solid var(--line); border-radius:9px; }
 #paperTopicIndex summary { cursor:pointer; font-weight:650; overflow-wrap:anywhere; }
@@ -690,6 +694,7 @@ const totalPoints=totalExamPoints(all),totalGoals=classView?{}:scoreGoalFor('合
 renderQuestionTrend(all);
 const nameset=new Set();for(const x of all){for(const t of x.subjectTags||[])nameset.add(t);for(const q of x.questions||[])for(const t of q.tags||[])nameset.add(t)}selectOptions($('#tagSelect'),[...nameset].sort().map(t=>[t,t]));const tag=$('#tagSelect').value,points=[];if(tag)for(const x of all){if((x.subjectTags||[]).includes(tag)&&complete(x))points.push({date:x.date,name:x.name,subject:x.subject,part:'科目全体',score:x.score,max:x.max});for(const q of x.questions||[])if((q.tags||[]).includes(tag)&&q.score!==null)points.push({date:x.date,name:x.name,subject:x.subject,part:q.name,score:q.score,max:q.max})}points.sort((a,b)=>a.date.localeCompare(b.date));lineChart($('#tagChart'),points.map(x=>x.date),points.map(x=>x.score/x.max*100),100,points.map(x=>[x.name,x.date||'日付未設定',x.subject+' '+x.part,x.score+' / '+x.max+'点', '得点率 '+Math.round(x.score/x.max*1000)/10+'%'].join('\n')));tableRows($('#tagTable'),['日付','試験','科目','対象','得点 / 配点','得点率'],points.map(x=>[x.date,x.name,x.subject,x.part,x.score+' / '+x.max,Math.round(x.score/x.max*100)+'%']))}
 const paperStatuses={new:'未着手',done:'解いた',review:'要復習'};
+const highlightedPaperYears=new Set([2018,2020,2022,2026]);
 const paperTable=$('#paperTable'),paperTableViewport=$('#paperTableViewport');
 const minPaperZoom=.5,maxPaperZoom=2;
 let paperZoom=1,paperPinch=null;
@@ -934,6 +939,7 @@ function renderPaperQuestionList(table,questions){
     row.className='paper-match-row';
     row.classList.toggle('paper-solved',state==='done');
     row.classList.toggle('paper-review',state==='review');
+    row.cells[0].classList.toggle('paper-year-highlight',highlightedPaperYears.has(Number(year)));
     row.cells[0].setAttribute('aria-label',year+'年度、'+(paperStatuses[state]||paperStatuses.new));
   });
 }
@@ -1058,7 +1064,9 @@ function renderPapers(){
  table.style.setProperty('--paper-question-count',Math.max(1,cols.length));
  const head=el('thead',''),h=el('tr','');for(const t of ['年度',...cols,'操作']){const cell=el('th',t);cell.scope='col';h.append(cell)}head.append(h);
  const body=el('tbody','');let done=0,review=0,total=0;
- for(const row of entries){const record=paperScoreRecord(row,data.scores),tr=el('tr',''),year=el('th',String(row.year));year.scope='row';tr.append(year);
+ for(const row of entries){const record=paperScoreRecord(row,data.scores),tr=el('tr',''),year=el('th',String(row.year));year.scope='row';
+ year.classList.toggle('paper-year-highlight',highlightedPaperYears.has(Number(row.year)));
+ tr.append(year);
  for(const name of cols){
  const td=el('td','','paper-cell');
  const linked=paperScoreQuestion(record,name,paperQuestionColumns(row.subject));
