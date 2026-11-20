@@ -355,7 +355,58 @@ const $=s=>document.querySelector(s);
 const localDate=(d=new Date())=>[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');
 const dateOffset=n=>{const d=new Date();d.setHours(12,0,0,0);d.setDate(d.getDate()+n);return localDate(d)};
 function scienceTag(tag,category){if(typeof tag!=='string'||category==='物理'&&/力学的波動/.test(tag))return null;const rules=category==='物理'?[[/単振動|振り子/,'単振動'],[/中心力場|二体問題|万有引力|惑星|ケプラー/,'中心力場'],[/熱|気体|相変化/,'熱力学'],[/ドップラー/,'ドップラー効果'],[/光の干渉|光の回折|干渉/,'光の干渉'],[/量子|物質波|光電|原子|原子核|放射/,'原子'],[/交流/,'交流'],[/電磁誘導|自己誘導|相互誘導|変圧器|平行レール/,'電磁誘導'],[/荷電|ローレンツ|磁場中.*粒子/,'荷電粒子'],[/回路|コンデンサ|電池|電流|電気振動/,'回路'],[/力学|運動|衝突|剛体|仕事|摩擦|浮力|慣性力/,'力学その他']]:category==='化学'?[[/構造決定/,'構造決定'],[/高分子|重合|樹脂|繊維/,'高分子'],[/熱化学|燃焼熱|反応熱/,'熱化学'],[/結晶/,'結晶'],[/電池|電気分解|電気化学/,'電池・電気分解'],[/反応速度/,'反応速度'],[/平衡|電離|溶解度積/,'平衡'],[/気体|蒸気圧/,'気体'],[/溶液|溶解|溶解度|浸透圧|凝固点|滴定|pH|中和/,'溶液'],[/有機|芳香族|脂肪族|アニリン|アミノ酸|アルケン|エステル|ペプチド|メタノール|油脂|炭化水素|糖類|脂肪酸|異性体|酸無水物/,'有機その他']]:[];return rules.find(([re])=>re.test(tag))?.[1]||null}
-function migrateScienceTags(x){if(x.scienceTagVersion===2)return x;const convert=(tags,cat)=>[...new Set(tags.flatMap(t=>{if(typeof t!=='string')return [];if(cat==='理科'){const a=scienceTag(t,'物理'),b=scienceTag(t,'化学');return a?[a]:b?[b]:[]}const found=scienceTag(t,cat);return found?[found]:[]}))];const archive=(obj,field,cat)=>{if(!Array.isArray(obj[field]))return;const current=obj[field].filter(t=>typeof t==='string'),old=obj.legacyScienceTags?.[field]||current,coarse=['力学','電磁気','熱力学','波動','原子','理論化学','無機化学','有機化学','高分子化学','その他'],source=old===current?current:[...old,...current.filter(t=>!coarse.includes(t))];obj.legacyScienceTags=obj.legacyScienceTags||{};if(!obj.legacyScienceTags[field])obj.legacyScienceTags[field]=current;obj[field]=convert(source,cat)};x.scienceTagArchive=x.scienceTagArchive||{catalog:{物理:[...(x.tagCatalog?.物理||[])],化学:[...(x.tagCatalog?.化学||[])]},hidden:{物理:[...(x.hiddenTags?.物理||[])],化学:[...(x.hiddenTags?.化学||[])]}};if(x.tagCatalog){x.tagCatalog.物理=[];x.tagCatalog.化学=[]}if(x.hiddenTags){x.hiddenTags.物理=[];x.hiddenTags.化学=[]}for(const score of x.scores||[]){for(const q of score.questions||[]){const cat=score.subject==='理科'?(q.name?.startsWith('物理')?'物理':q.name?.startsWith('化学')?'化学':null):score.subject;if(cat==='物理'||cat==='化学')archive(q,'tags',cat)}if(['物理','化学','理科'].includes(score.subject))archive(score,'subjectTags',score.subject)}for(const row of x.pastPapers||[]){if(!row.tagsByQuestion)continue;for(const [name,tags] of Object.entries(row.tagsByQuestion)){const cat=row.subject==='理科'?(name.startsWith('物理')?'物理':name.startsWith('化学')?'化学':null):row.subject;if((cat==='物理'||cat==='化学')&&Array.isArray(tags)){const holder={tags,legacyScienceTags:row.legacyScienceTagsByQuestion?.[name]?{tags:row.legacyScienceTagsByQuestion[name]}:undefined};archive(holder,'tags',cat);row.legacyScienceTagsByQuestion=row.legacyScienceTagsByQuestion||{};if(!row.legacyScienceTagsByQuestion[name])row.legacyScienceTagsByQuestion[name]=holder.legacyScienceTags.tags;row.tagsByQuestion[name]=holder.tags}}}x.scienceTagVersion=2;return x}
+const physicsTagAliases=new Map([
+  ['中心力場','円運動・万有引力'],
+  ['円運動、万有引力','円運動・万有引力'],
+  ['荷電粒子','荷電粒子の運動'],
+  ['電磁誘導','電流と磁界・電磁誘導'],
+  ['電流と磁界、電磁誘導','電流と磁界・電磁誘導'],
+]);
+function normalizePhysicsTags(data){
+  const replace=(owner,key)=>{
+    const tags=owner?.[key];
+    if(Array.isArray(tags)&&tags.some(tag=>physicsTagAliases.has(tag))){
+      owner[key]=[...new Set(tags.map(tag=>physicsTagAliases.get(tag)??tag))];
+    }
+  };
+  const isPhysics=(subject,name)=>subject==='物理'||(subject==='理科'&&String(name).startsWith('物理'));
+  for(const score of data.scores||[]){
+    if(['理科','物理'].includes(score.subject)){
+      replace(score,'subjectTags');
+      replace(score.legacyScienceTags,'subjectTags');
+    }
+    for(const question of score.questions||[]){
+      if(isPhysics(score.subject,question.name)){
+        replace(question,'tags');
+        replace(question.legacyScienceTags,'tags');
+      }
+    }
+  }
+  for(const row of data.pastPapers||[]){
+    for(const field of ['tagsByQuestion','legacyScienceTagsByQuestion','prePhotoScienceTags']){
+      const tags=row[field];
+      for(const name of Object.keys(tags||{})){
+        if(isPhysics(row.subject,name))replace(tags,name);
+      }
+    }
+  }
+  replace(data.tagCatalog,'物理');
+  replace(data.scienceTagArchive?.catalog,'物理');
+  replace(data.scienceTagArchive?.hidden,'物理');
+  const hidden=data.hiddenTags?.物理;
+  if(Array.isArray(hidden)&&hidden.some(tag=>physicsTagAliases.has(tag))){
+    data.hiddenTags.物理=hidden.filter(tag=>!physicsTagAliases.has(tag));
+  }
+  const groups=data.tagGroups?.物理;
+  for(const [tag,canonical] of physicsTagAliases){
+    if(groups&&Object.hasOwn(groups,tag)){
+      if(!Object.hasOwn(groups,canonical))groups[canonical]=groups[tag];
+      delete groups[tag];
+    }
+  }
+  return data;
+}
+function migrateScienceTags(x){if(x.scienceTagVersion===2)return normalizePhysicsTags(x);const convert=(tags,cat)=>[...new Set(tags.flatMap(t=>{if(typeof t!=='string')return [];if(cat==='理科'){const a=scienceTag(t,'物理'),b=scienceTag(t,'化学');return a?[a]:b?[b]:[]}const found=scienceTag(t,cat);return found?[found]:[]}))];const archive=(obj,field,cat)=>{if(!Array.isArray(obj[field]))return;const current=obj[field].filter(t=>typeof t==='string'),old=obj.legacyScienceTags?.[field]||current,coarse=['力学','電磁気','熱力学','波動','原子','理論化学','無機化学','有機化学','高分子化学','その他'],source=old===current?current:[...old,...current.filter(t=>!coarse.includes(t))];obj.legacyScienceTags=obj.legacyScienceTags||{};if(!obj.legacyScienceTags[field])obj.legacyScienceTags[field]=current;obj[field]=convert(source,cat)};x.scienceTagArchive=x.scienceTagArchive||{catalog:{物理:[...(x.tagCatalog?.物理||[])],化学:[...(x.tagCatalog?.化学||[])]},hidden:{物理:[...(x.hiddenTags?.物理||[])],化学:[...(x.hiddenTags?.化学||[])]}};if(x.tagCatalog){x.tagCatalog.物理=[];x.tagCatalog.化学=[]}if(x.hiddenTags){x.hiddenTags.物理=[];x.hiddenTags.化学=[]}for(const score of x.scores||[]){for(const q of score.questions||[]){const cat=score.subject==='理科'?(q.name?.startsWith('物理')?'物理':q.name?.startsWith('化学')?'化学':null):score.subject;if(cat==='物理'||cat==='化学')archive(q,'tags',cat)}if(['物理','化学','理科'].includes(score.subject))archive(score,'subjectTags',score.subject)}for(const row of x.pastPapers||[]){if(!row.tagsByQuestion)continue;for(const [name,tags] of Object.entries(row.tagsByQuestion)){const cat=row.subject==='理科'?(name.startsWith('物理')?'物理':name.startsWith('化学')?'化学':null):row.subject;if((cat==='物理'||cat==='化学')&&Array.isArray(tags)){const holder={tags,legacyScienceTags:row.legacyScienceTagsByQuestion?.[name]?{tags:row.legacyScienceTagsByQuestion[name]}:undefined};archive(holder,'tags',cat);row.legacyScienceTagsByQuestion=row.legacyScienceTagsByQuestion||{};if(!row.legacyScienceTagsByQuestion[name])row.legacyScienceTagsByQuestion[name]=holder.legacyScienceTags.tags;row.tagsByQuestion[name]=holder.tags}}}x.scienceTagVersion=2;return normalizePhysicsTags(x)}
 let data={studies:[],scores:[],tasks:[]};
 const validNearGoalDate=s=>typeof s==='string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s+'T00:00:00Z')) && new Date(s+'T00:00:00Z').toISOString().slice(0,10)===s;
 function validCommonGoals(value){return value&&typeof value==='object'&&!Array.isArray(value)&&Object.entries(value).every(([subject,levels])=>Object.hasOwn({国語:200,数学1A:100,数学2BC:100,数学1A2B:100,数学3C:100,英語R:100,英語L:100,物理:100,化学:100,政経:100,情報:100,合計:1000},subject)&&levels&&typeof levels==='object'&&!Array.isArray(levels)&&Object.entries(levels).every(([key,v])=>['floor','target','ideal'].includes(key)&&Number.isFinite(v)&&v>=0&&v<=({国語:200,合計:1000}[subject]||100)))}
@@ -380,8 +431,8 @@ const subjectTagGroups={
     学習指導要領外:['微分・積分方程式','行列・一次変換'],
   },
   物理:{
-    力学:['単振動','中心力場','力学その他','二体問題','運動方程式・力のつりあい','運動量保存・衝突','円運動・万有引力'],
-    電磁気:['回路','荷電粒子','電磁誘導','交流','コンデンサーと電気回路','荷電粒子の運動','電流と磁界・電磁誘導','交流回路'],
+    力学:['単振動','力学その他','二体問題','運動方程式・力のつりあい','運動量保存・衝突','円運動・万有引力'],
+    電磁気:['回路','交流','コンデンサーと電気回路','荷電粒子の運動','電流と磁界・電磁誘導','交流回路'],
     熱力学:['熱力学'],
     波動:['光の干渉','ドップラー効果','力学的波動','共鳴・ドップラー効果','光波・波の干渉'],
     原子:['原子'],
@@ -508,7 +559,7 @@ function setupChartTooltip(canvas,points,details,regions=[]){
 }
 
 const presets={国語:[['現代文',40],['古文',20],['漢文',20]],数学:Array.from({length:6},(_,i)=>[String(i+1),20]),理科:[...['物理1','物理2','物理3'].map(x=>[x,20]),...['化学1Ⅰ','化学1Ⅱ','化学2Ⅰ','化学2Ⅱ','化学3Ⅰ','化学3Ⅱ'].map(x=>[x,null])],英語:['1A','1B','2A','2B','3','4A','4B','5'].map(x=>[x,null])};
-const defaultTags={数学:['整数','場合の数・確率','複素平面','極限・微分','積分（体積除く）','図形と方程式'],物理:['単振動','中心力場','力学その他','熱力学','回路','荷電粒子','電磁誘導','交流','原子','光の干渉','ドップラー効果'],化学:['構造決定','高分子','有機その他','熱化学','結晶','平衡','反応速度','気体','溶液','電池・電気分解','無機'],国語:[],英語:[],理科:[],政経:[],情報:[]};
+const defaultTags={数学:['整数','場合の数・確率','複素平面','極限・微分','積分（体積除く）','図形と方程式'],物理:['単振動','円運動・万有引力','力学その他','熱力学','回路','荷電粒子の運動','電流と磁界・電磁誘導','交流','原子','光の干渉','ドップラー効果'],化学:['構造決定','高分子','有機その他','熱化学','結晶','平衡','反応速度','気体','溶液','電池・電気分解','無機'],国語:[],英語:[],理科:[],政経:[],情報:[]};
 const tagCategories=Object.keys(defaultTags).filter(category=>category!=='理科');
 function categoryFor(subject,name){if(/^数学/.test(subject))return '数学';if(/^英語/.test(subject))return '英語';return subject==='理科'?(name.startsWith('物理')?'物理':name.startsWith('化学')?'化学':'理科'):subject}
 function groupedTagChoices(category){
@@ -602,7 +653,8 @@ $('#tagForm').elements.category.addEventListener('change',()=>{
 updateTagGroupField();
 $('#tagForm').onsubmit=event=>{
   event.preventDefault();
-  const form=event.currentTarget,cat=form.elements.category.value,tag=form.elements.tag.value.trim();
+  const form=event.currentTarget,cat=form.elements.category.value,entered=form.elements.tag.value.trim();
+  const tag=cat==='物理'?physicsTagAliases.get(entered)??entered:entered;
   const groups=tagGroupNames(cat),group=form.elements.group.value;
   const status=$('#tagStatus');
   if(!tag||tag.length>50||!tagCategories.includes(cat)||(groups.length&&!groups.includes(group))){
