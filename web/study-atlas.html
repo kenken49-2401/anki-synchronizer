@@ -758,8 +758,10 @@ function openPaperResult(row,name,trigger){
   paperResultForm.elements.minutes.value=result?.minutes??'';
   paperResultForm.elements.score.value=result?.score??'';
   const tags=$('#paperResultTags');
+  const hideTags=highlightedPaperYears.has(Number(row.year));
+  $('#paperResultTagField').hidden=hideTags;
   tags.replaceChildren();
-  makeTagOptions(tags,[categoryFor(row.subject,name)],row.tagsByQuestion?.[name]||[]);
+  if(!hideTags)makeTagOptions(tags,[categoryFor(row.subject,name)],row.tagsByQuestion?.[name]||[]);
   $('#paperResultStatus').hidden=true;
   paperResultDialog.showModal();
 }
@@ -801,11 +803,13 @@ paperResultForm.onsubmit=event=>{
   if(!Object.keys(result).length)delete results[edit.name];
   if(Object.keys(results).length)row.resultsByQuestion=results;
   else delete row.resultsByQuestion;
-  const chosen=readPicker($('#paperResultTags'));
-  const previousTags=row.tagsByQuestion?.[edit.name]||[];
-  const tags=[...previousTags.filter(tag=>chosen.includes(tag)),...chosen.filter(tag=>!previousTags.includes(tag))];
-  if(tags.length||Object.hasOwn(row.tagsByQuestion||{},edit.name)){
-    row.tagsByQuestion={...row.tagsByQuestion,[edit.name]:tags};
+  if(!highlightedPaperYears.has(Number(row.year))){
+    const chosen=readPicker($('#paperResultTags'));
+    const previousTags=row.tagsByQuestion?.[edit.name]||[];
+    const tags=[...previousTags.filter(tag=>chosen.includes(tag)),...chosen.filter(tag=>!previousTags.includes(tag))];
+    if(tags.length||Object.hasOwn(row.tagsByQuestion||{},edit.name)){
+      row.tagsByQuestion={...row.tagsByQuestion,[edit.name]:tags};
+    }
   }
   if(save())paperResultDialog.close();
   else{
@@ -1058,14 +1062,15 @@ function renderPapers(){
  const showOlderPapers=$('#paperYearRange').value==='all';
  const entries=subjectEntries.filter(x=>showOlderPapers||x.year>1992).sort((a,b)=>b.year-a.year);
  const emptyMessage=subjectEntries.length?'1993年度以降の記録がありません。1992年度以前も表示すると確認できます。':'登録済みの年度はありません。';
- const savedTags=[...new Set(entries.flatMap(row=>Object.values(row.tagsByQuestion||{}).flat()).filter(x=>typeof x==='string'))],categories=subject.value==='理科'?['物理','化学']:subject.value?[subject.value]:[],filterPicker=makeTagPicker(categories,[...new Set([...paperFilterTags,...savedTags])]);for(const checkbox of filterPicker.querySelectorAll('input'))checkbox.checked=paperFilterTags.includes(checkbox.value);const updateFilterSummary=()=>{filterPicker.querySelector('summary').textContent=paperFilterTags.length?paperFilterTags.join('・'):'タグを選択'};updateFilterSummary();filterPicker.addEventListener('change',()=>{paperFilterTags=readPicker(filterPicker);updateFilterSummary();applyPaperFilters()});$('#paperFilterTags').replaceChildren(filterPicker);
+ const savedTags=[...new Set(entries.filter(row=>!highlightedPaperYears.has(Number(row.year))).flatMap(row=>Object.values(row.tagsByQuestion||{}).flat()).filter(x=>typeof x==='string'))],categories=subject.value==='理科'?['物理','化学']:subject.value?[subject.value]:[],filterPicker=makeTagPicker(categories,[...new Set([...paperFilterTags,...savedTags])]);for(const checkbox of filterPicker.querySelectorAll('input'))checkbox.checked=paperFilterTags.includes(checkbox.value);const updateFilterSummary=()=>{filterPicker.querySelector('summary').textContent=paperFilterTags.length?paperFilterTags.join('・'):'タグを選択'};updateFilterSummary();filterPicker.addEventListener('change',()=>{paperFilterTags=readPicker(filterPicker);updateFilterSummary();applyPaperFilters()});$('#paperFilterTags').replaceChildren(filterPicker);
  renderPaperGroupFilter(categories);
  const cols=paperQuestionColumns(subject.value);for(const row of entries)for(const name of [...Object.keys(row.statuses||{}),...Object.keys(row.tagsByQuestion||{}),...Object.keys(row.resultsByQuestion||{})])if(!cols.includes(name))cols.push(name);const table=$('#paperTable');
  table.style.setProperty('--paper-question-count',Math.max(1,cols.length));
  const head=el('thead',''),h=el('tr','');for(const t of ['年度',...cols,'操作']){const cell=el('th',t);cell.scope='col';h.append(cell)}head.append(h);
  const body=el('tbody','');let done=0,review=0,total=0;
  for(const row of entries){const record=paperScoreRecord(row,data.scores),tr=el('tr',''),year=el('th',String(row.year));year.scope='row';
- year.classList.toggle('paper-year-highlight',highlightedPaperYears.has(Number(row.year)));
+ const hideTags=highlightedPaperYears.has(Number(row.year));
+ year.classList.toggle('paper-year-highlight',hideTags);
  tr.append(year);
  for(const name of cols){
  const td=el('td','','paper-cell');
@@ -1093,7 +1098,7 @@ function renderPapers(){
  td.dataset.score=Number.isFinite(recorded.score)?String(recorded.score):'';
  td.dataset.minutes=Number.isFinite(recorded.minutes)?String(recorded.minutes):'';
  appendPaperResult(td,row,name,state,recorded,reference,filterDifficulty,filterTime);
- const selectedTags=row.tagsByQuestion?.[name]||[];
+ const selectedTags=hideTags?[]:row.tagsByQuestion?.[name]||[];
  td.dataset.tags=JSON.stringify(selectedTags);
  td.dataset.difficulty=filterDifficulty;
  td.dataset.expectedMinutes=filterTime;
