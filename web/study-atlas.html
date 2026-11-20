@@ -230,32 +230,74 @@ th{font-size:11px;letter-spacing:.15px;color:#61786b;background:#f6f9f7}
 #paperTopicLists th, #paperTopicLists td { padding:6px clamp(4px,1vw,12px); }
 .paper-match-legend { display:flex; flex-wrap:wrap; gap:5px 12px; margin:5px 0; font-size:12px; }
 .paper-match-key { display:inline-block; width:12px; height:12px; border:1px solid var(--line); border-radius:3px; vertical-align:middle; margin-right:4px; }
-#paperTable { width:max-content; }
+#paperTable {
+  --paper-zoom: 1;
+  --paper-unit: calc(1px * var(--paper-zoom));
+  width: max-content;
+  font-size: calc(12 * var(--paper-unit));
+  -webkit-text-size-adjust: none;
+  text-size-adjust: none;
+}
 #paperTableViewport { touch-action:pan-x pan-y; overflow-anchor:none; margin-top:6px; }
 
 .paper-zoom-controls { display:flex; align-items:center; justify-content:flex-end; gap:4px; margin-top:8px; }
 #paper .paper-zoom-controls button { min-width:30px; min-height:30px; padding:3px 7px; font-size:12px; }
 #paper .paper-zoom-controls button:disabled { opacity:.45; cursor:default; }
-#paperTable th, #paperTable td { padding:4px 5px; }
-#paperTable .paper-cell { width:75px; min-width:48px; white-space:normal; }
-#paperTable .paper-reference { min-width:0; }
-/* The table zoom also scales tag text. Keep mobile text inflation from overriding it. */
+#paperTable caption { font-size: calc(11 * var(--paper-unit)); padding: calc(10 * var(--paper-unit)) calc(12 * var(--paper-unit)); }
+#paperTable th, #paperTable td { padding: calc(4 * var(--paper-unit)) calc(5 * var(--paper-unit)); }
+#paperTable th { font-size: calc(11 * var(--paper-unit)); }
+#paperTable th[scope=row] { font-size: calc(13 * var(--paper-unit)); }
+#paperTable .paper-cell { width: calc(75 * var(--paper-unit)); min-width: calc(48 * var(--paper-unit)); white-space: normal; }
 #paperTable .paper-tag-list {
-  max-width:75px; gap:2px; margin-top:1px;
-  -webkit-text-size-adjust:none;
-  text-size-adjust:none;
+  max-width: calc(75 * var(--paper-unit));
+  gap: calc(2 * var(--paper-unit));
+  margin-top: var(--paper-unit);
 }
+#paperTable .paper-tag-list .tag-chip {
+  padding: var(--paper-unit) calc(6 * var(--paper-unit));
+  font-size: calc(10 * var(--paper-unit));
+}
+#paperTable .difficulty-line { gap: calc(4 * var(--paper-unit)); }
+#paperTable .difficulty-line .difficulty-badge {
+  margin: 0;
+  min-width: calc(30 * var(--paper-unit));
+  padding: calc(4 * var(--paper-unit)) calc(7 * var(--paper-unit));
+  font-size: calc(18 * var(--paper-unit));
+}
+#paperTable .paper-time-symbols { font-size: calc(13 * var(--paper-unit)); }
 .paper-result-line { display:flex; align-items:center; justify-content:center; flex-wrap:wrap; gap:2px; font-size:11px; line-height:1.25; }
-#paperTable .difficulty-line .difficulty-badge { margin:0; }
 .paper-result-value { color:#000; font-size:11px; white-space:nowrap; }
 :root[data-theme="dark"] .paper-result-value { background:#dfe7e2; padding:1px 3px; border-radius:3px; }
-#paperTable .paper-result-edit { min-width:24px; min-height:24px; padding:1px 4px; line-height:1; font-size:13px; }
+#paperTable .paper-result-line { gap: calc(2 * var(--paper-unit)); }
+#paperTable .paper-result-line, #paperTable .paper-result-value { font-size: calc(11 * var(--paper-unit)); }
+:root[data-theme="dark"] #paperTable .paper-result-value {
+  padding: var(--paper-unit) calc(3 * var(--paper-unit));
+}
+#paperTable .paper-reference {
+  min-width: 0;
+  margin-top: calc(5 * var(--paper-unit));
+  font-size: calc(10 * var(--paper-unit));
+}
+#paperTable .paper-result-edit {
+  min-width: calc(24 * var(--paper-unit));
+  min-height: calc(24 * var(--paper-unit));
+  padding: var(--paper-unit) calc(4 * var(--paper-unit));
+  line-height: 1;
+  font-size: calc(13 * var(--paper-unit));
+}
+#paperTable button.danger {
+  min-height: calc(32 * var(--paper-unit));
+  padding: calc(5 * var(--paper-unit)) calc(10 * var(--paper-unit));
+  font-size: calc(11 * var(--paper-unit));
+}
 @media(min-width:900px){
   #paperTableViewport { container-type:inline-size; }
-  #paperTable { min-width:100cqw; }
-  #paperTable tr>:first-child { width:60px; }
-  #paperTable tr>:last-child:not([colspan]) { width:100px; }
-  #paperTable .paper-cell { width:max(75px,calc((100cqw - 160px) / var(--paper-question-count, 6))); }
+  #paperTable { min-width: calc(100cqw * var(--paper-zoom)); }
+  #paperTable tr>:first-child { width: calc(60 * var(--paper-unit)); }
+  #paperTable tr>:last-child:not([colspan]) { width: calc(100 * var(--paper-unit)); }
+  #paperTable .paper-cell {
+    width: max(calc(75 * var(--paper-unit)), calc((100cqw - 160px) * var(--paper-zoom) / var(--paper-question-count, 6)));
+  }
   #paperTable .paper-tag-list { max-width:none; }
 }
 #tagGroupField[hidden], #paperFilterGroupField[hidden] { display:none; }
@@ -653,7 +695,7 @@ let paperZoom=1,paperPinch=null;
 
 function zoomPaperTable(scale,anchor,center){
   paperZoom=Math.max(minPaperZoom,Math.min(maxPaperZoom,scale));
-  paperTable.style.zoom=paperZoom;
+  paperTable.style.setProperty('--paper-zoom',String(paperZoom));
   const rect=paperTable.getBoundingClientRect();
   paperTableViewport.scrollLeft+=rect.left+anchor.x*paperZoom-center.x;
   if(anchor.y!==null)window.scrollBy({top:rect.top+anchor.y*paperZoom-center.y,behavior:'instant'});
