@@ -4,7 +4,7 @@ const source=readFileSync(new URL('../web/study-atlas.html',import.meta.url),'ut
 const line=key=>{const i=source.indexOf(key);assert(i>=0,key);return source.slice(i,source.indexOf('\n',i))};
 const block=(a,b)=>source.slice(source.indexOf(a),source.indexOf(b,source.indexOf(a)));
 const helpers=block('const goalMax=','const goalLabels=').replace(/function setExamFormat[\s\S]*/,'');
-const code=helpers+'\n'+block('const subjectTagGroups=','const valid=x=>')+'\n'+['const presets=','function sumDecimal(','function completeSum(','function selfScoreValue(','const complete=','function questionTotals(','function scienceSubjectView(','function scoreGoalFor(','function goalTotalFor(','const resultSubjects=','const resultTotal=','function totalExamPoints(','function validCommonGoals(','const validNearGoalDate=','function validNearGoalSubjects(','const valid=x=>'].map(line).join('\n')+'\n'+block('function completeExamSets(','function deleteButton(')+'\n'+block('function nearGoals(data','function nearGoalTargetGaps(');
+const code=helpers+'\n'+block('const subjectTagGroups=','const valid=x=>')+'\n'+['const presets=','function sumDecimal(','function completeSum(','function selfScoreValue(','const complete=','function questionTotals(','function scienceSubjectView(','function scoreGoalFor(','function goalTotalFor(','const resultSubjects=','const resultTotal=','function totalExamPoints(','function validCommonGoals(','const validNearGoalDate=','function validNearGoalSubjects(','const valid=x=>'].map(line).join('\n')+'\n'+block('function questionGoalLevel(','function applyQuestionGoal(')+'\n'+block('function completeExamSets(','function deleteButton(')+'\n'+block('function nearGoals(data','function nearGoalTargetGaps(');
 new Function('assert',`const $=id=>id==='#scoreForm'?{elements:{kind:{value:'模試'}}}:{value:'standard'};let data={scoreGoals:{英語:{target:70}},commonScoreGoals:{英語R:{target:80}}};${code}
 assert.equal(examFormatOf({}),'secondary');
 activeExamFormat='common';
@@ -28,6 +28,14 @@ assert.equal(totalExamPoints(common.slice(1)).length,0);
 const undated={...common[0],name:'一科目だけの過去問',kind:'過去問',date:'',scoreComplete:false,score:0,questions:[{name:'合計',score:null,minutes:45}]};
 assert.equal(completeExamSets([undated])[0].items[0].questions[0].minutes,45);
 assert.equal(totalExamPoints([undated]).length,0);
+data.commonScoreGoals.数学1A={floor:60,target:78,ideal:92};
+assert.equal(questionGoalLevel('数学1A',60,100),'floor');
+assert.equal(questionGoalLevel('数学1A',59,100),'below');
+assert.equal(questionGoalLevel('数学1A',78,100),'target');
+assert.equal(questionGoalLevel('数学1A',92,100),'ideal');
+assert.equal(questionGoalLevel('数学1A',null,100),null);
+assert.equal(questionGoalLevel('数学1A',0,null),null);
+
 const fixture={studies:[],scores:[...common,...second],tasks:[]};
 assert(valid(fixture));
 assert(valid({...fixture,tagGroups:{物理:{斜方投射:'力学'},化学:{金属:'無機'}}}));
@@ -46,4 +54,15 @@ assert.equal(completeExamSets(second.slice(1)).length,0);
 assert.equal(completeExamSets(fixture.scores).length,1);
 assert.equal(totalExamPoints(fixture.scores)[0].values.reduce((a,b)=>a+b,0),220);
 assert.equal(nearGoals(fixture,'2026-11-10').ranking.length,4);
+data.scoreGoals.数学={floor:60,target:80,ideal:90};
+assert.equal(questionGoalLevel('数学',9,20),'below');
+assert.equal(questionGoalLevel('数学',10,20),'floor');
+assert.equal(questionGoalLevel('数学',14,20),'target');
+assert.equal(questionGoalLevel('数学',15,20),'ideal');
+data.scoreGoals.理科={floor:72,target:90};
+data.scoreGoals.物理={floor:24};
+assert.equal(questionGoalLevel('理科',9,20,'物理1'),'floor');
+assert.equal(questionGoalLevel('理科',12,20,'化学1'),'floor');
+assert.equal(questionGoalLevel('化学',11,20),'below');
+
 `)(assert);
