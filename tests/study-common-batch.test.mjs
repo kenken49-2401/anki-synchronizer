@@ -18,4 +18,10 @@ const result=readCommonBatch(form,[row('数学1A',{score:0}),row('情報',{})],[
 assert.equal(result.length,1);assert.equal(result[0].id,'old');assert.equal(result[0].subject,'数学1A');assert.equal(result[0].score,0);assert.equal(result[0].custom,'keep');assert.deepEqual(result[0].questions[0].tags,['既存']);
 assert.throws(()=>readCommonBatch(form,[row('数学1A',{score:101})],[]));
 assert.equal(readCommonBatch(form,[row('情報',{})],[]).length,0);
+const timed=readCommonBatch(form,[row('情報',{minutes:105.5})],[])[0];
+assert.equal(timed.questions[0].minutes,105.5);
+assert.equal(timed.scoreComplete,false);
+assert.equal(readCommonBatch(form,[row('情報',{minutes:0})],[])[0].questions[0].minutes,0);
+assert.equal(readCommonBatch(form,[row('情報',{score:60})],[timed])[0].questions[0].minutes,null);
+assert.throws(()=>readCommonBatch(form,[row('情報',{minutes:-1})],[]),/所要時間/);
 `)(assert);
