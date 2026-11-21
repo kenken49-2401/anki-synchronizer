@@ -4,7 +4,7 @@ const source=readFileSync(new URL('../web/study-atlas.html',import.meta.url),'ut
 const line=key=>{const i=source.indexOf(key);assert(i>=0,key);return source.slice(i,source.indexOf('\n',i))};
 const block=(a,b)=>source.slice(source.indexOf(a),source.indexOf(b,source.indexOf(a)));
 const helpers=block('const goalMax=','const goalLabels=').replace(/function setExamFormat[\s\S]*/,'');
-const code=helpers+'\n'+block('const subjectTagGroups=','const valid=x=>')+'\n'+['const presets=','function sumDecimal(','function completeSum(','function selfScoreValue(','const complete=','function questionTotals(','function scienceSubjectView(','function scoreGoalFor(','function goalTotalFor(','const resultSubjects=','const resultTotal=','function totalExamPoints(','function validCommonGoals(','const validNearGoalDate=','function validNearGoalSubjects(','const valid=x=>'].map(line).join('\n')+'\n'+block('function questionGoalLevel(','function applyQuestionGoal(')+'\n'+block('function completeExamSets(','function deleteButton(')+'\n'+block('function nearGoals(data','function nearGoalTargetGaps(');
+const code=helpers+'\n'+block('const subjectTagGroups=','const valid=x=>')+'\n'+['const presets=','function sumDecimal(','function completeSum(','function selfScoreValue(','const complete=','function questionTotals(','function scienceSubjectView(','function scoreGoalFor(','function goalTotalFor(','const resultSubjects=','const resultTotal=','function totalExamPoints(','function validCommonGoals(','const validNearGoalDate=','function validNearGoalSubjects(','const valid=x=>'].map(line).join('\n')+'\n'+block('function questionGoalLevel(','function applyQuestionGoal(')+'\n'+block('const commonTodaiBenchmarks=','function commonBenchmarkCard(')+'\n'+block('function examTotalRow(','function renderExamResults(')+'\n'+block('function completeExamSets(','function deleteButton(')+'\n'+block('function nearGoals(data','function nearGoalTargetGaps(');
 new Function('assert',`const $=id=>id==='#scoreForm'?{elements:{kind:{value:'模試'}}}:{value:'standard'};let data={scoreGoals:{英語:{target:70}},commonScoreGoals:{英語R:{target:80}}};${code}
 assert.equal(examFormatOf({}),'secondary');
 activeExamFormat='common';
@@ -36,6 +36,19 @@ assert.equal(questionGoalLevel('数学1A',92,100),'ideal');
 assert.equal(questionGoalLevel('数学1A',null,100),null);
 assert.equal(questionGoalLevel('数学1A',0,null),null);
 
+const withEnglish=common.map(record=>({...record,score:({英語R:90,英語L:55})[record.subject]??record.score}));
+const examValues=records=>records.map(({score,max})=>({score,max,average:null,selfscore:null}));
+const converted=todaiCommonTotals(withEnglish,examValues(withEnglish));
+assert(converted.full);
+assert.deepEqual(examTotalRow(converted.totals,'東大換算合計',false).cells,['東大換算合計',559,null,null,1000]);
+const oldCommon=withEnglish.map(record=>({...record,kind:'過去問',name:'2024'}));
+const oldConverted=todaiCommonTotals(oldCommon,examValues(oldCommon));
+assert(oldConverted.full);
+assert.deepEqual(examTotalRow(oldConverted.totals,'東大換算合計',false).cells,['東大換算合計',509,null,null,900]);
+const incomplete=withEnglish.filter(record=>record.subject==='英語R');
+const partialConverted=todaiCommonTotals(incomplete,examValues(incomplete));
+assert(!partialConverted.full);
+assert.deepEqual(examTotalRow(partialConverted.totals,'東大換算合計',false).cells,['東大換算合計',126,null,null,140]);
 const fixture={studies:[],scores:[...common,...second],tasks:[]};
 assert(valid(fixture));
 assert(valid({...fixture,tagGroups:{物理:{斜方投射:'力学'},化学:{金属:'無機'}}}));
