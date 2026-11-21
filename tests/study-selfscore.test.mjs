@@ -25,10 +25,20 @@ test('exam selector accepts all self scores, while official total chart stays of
   assert.equal(a.completeExamSets(rows).length,1);
   assert.equal(a.completeExamSets(rows)[0].selfComplete,true);
   assert.equal(a.totalExamPoints(rows).length,0);
-  assert.equal(a.completeExamSets(rows.slice(1)).length,0);
-  assert.equal(a.completeExamSets([...rows,{...rows[0],id:'duplicate'}]).length,0);
-  assert.equal(a.completeExamSets(rows.map((r,i)=>i? r:{...r,selfscore:null})).length,0);
-  assert.equal(a.completeExamSets(rows.map((r,i)=>i? r:{...r,selfscore:null,score:40,scoreComplete:true})).length,0,'mixed sources cannot produce a full total');
+  for(const incomplete of [
+   rows.slice(1),
+   [...rows,{...rows[0],id:'duplicate'}],
+   rows.map((r,i)=>i? r:{...r,selfscore:null}),
+   rows.map((r,i)=>i? r:{...r,selfscore:null,score:40,scoreComplete:true})
+  ]){
+   const visible=a.completeExamSets(incomplete);
+   if(format==='common'){
+    assert.equal(visible.length,1);
+    assert.equal(visible[0].partial,true);
+    assert.equal(visible[0].selfComplete,false);
+   }else assert.equal(visible.length,0);
+   assert.equal(a.totalExamPoints(incomplete).length,0);
+  }
   assert.equal(a.completeExamSets(rows.map(r=>({...r,selfscore:0}))).length,1);
   assert.equal(a.totalExamPoints(rows.map(r=>({...r,score:20,scoreComplete:true}))).length,1);
   assert.equal(JSON.stringify(rows),original,'display does not mutate records');
