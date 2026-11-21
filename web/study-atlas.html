@@ -412,6 +412,18 @@ th{font-size:11px;letter-spacing:.15px;color:#61786b;background:#f6f9f7}
 :root[data-theme="dark"] #scores td.goal-below,
 :root[data-theme="dark"] #scores #examResults td.goal-below,
 :root[data-theme="dark"] .exam-goal-key.goal-below{background:#4b2929;color:#ffc4c4}
+
+.exam-points-table{width:100%;table-layout:fixed;white-space:normal;font-variant-numeric:tabular-nums}
+.exam-points-table :is(th,td){overflow-wrap:anywhere}
+.exam-points-table th:first-child{width:24%}
+.exam-points-table th:nth-child(2){width:19%}
+.exam-row-details{display:block;font-weight:400;line-height:1.35;margin-top:3px}
+@media(max-width:760px){
+  .exam-card:has(.exam-points-table){padding:8px}
+  .exam-card .exam-points-table{font-size:12px;line-height:1.35}
+  .exam-card .exam-points-table :is(th,td){padding:6px 2px}
+  .exam-card .exam-points-table thead th{font-size:10px;letter-spacing:0}
+}
 </style><link rel="stylesheet" href="./theme.css"></head><body><aside class="sidebar"><a class="brand" href="#study"><span class="mark">S</span><span>Study <strong>Atlas</strong></span></a><p class="workspace">WORKSPACE</p><nav aria-label="学習管理の画面"><a href="#study"><span class="nav-icon" aria-hidden="true">◷</span><span>勉強時間</span></a><a href="#scores"><span class="nav-icon" aria-hidden="true">▤</span><span>過去問・模試</span></a><a href="#near-goals"><span class="nav-icon" aria-hidden="true">✦</span><span>目先の目標</span></a><a href="#goals"><span class="nav-icon" aria-hidden="true">◎</span><span>目標設定</span></a><a href="#paper"><span class="nav-icon" aria-hidden="true">▦</span><span>過去問埋め</span></a><a href="#tasks"><span class="nav-icon" aria-hidden="true">✓</span><span>期日付きタスク</span></a><a href="#tag-settings"><span class="nav-icon" aria-hidden="true">♧</span><span>タグ追加</span></a><a href="#data"><span class="nav-icon" aria-hidden="true">⚙</span><span>設定</span></a></nav><div class="sidebar-bottom">日々の積み重ねを、<br>ひとつの場所に。<br><a href="./">Anki Atlas に戻る →</a></div></aside><main><div class="topbar"><span>ワークスペース　/　<strong id="pageTitle">勉強時間</strong></span><a href="./">Anki Atlas ↗</a></div><div class="content"><div id="saveError" class="save-error" role="alert" hidden><span id="saveErrorText"></span><button type="button" id="saveErrorDismiss" class="secondary">閉じる</button></div><p id="syncState" class="sync-state" role="status">GitHubとの接続を確認しています…</p><div class="intro"><span class="eyebrow">STUDY WORKSPACE</span><h1 id="headingTitle">勉強時間</h1><p id="headingDescription">日々の学習を記録して、積み重ねを振り返りましょう。</p></div>
 <div class="grid" id="study-summary"><div class="metric">今日の勉強時間<strong id="today">0分</strong></div><div class="metric">直近7日間<strong id="week">0分</strong></div><div class="metric">今日までの未完了タスク<strong id="pending">0件</strong></div></div>
 <section id="near-goals" hidden data-near-format="secondary"><div class="exam-format-switch" role="group" aria-label="目先の目標の試験形式"><button type="button" data-near-format-choice="secondary" aria-pressed="true">二次試験</button><button type="button" data-near-format-choice="common" aria-pressed="false">共通テスト</button></div><p id="nearFormatStatus" class="muted">二次試験の目標・模試を表示しています。</p><div class="near-section-heading"><span class="near-kicker">NEXT MILESTONE</span><h2>目先の目標</h2><p>次の試験までに、何を・どこまで伸ばすかを整理しましょう。</p></div><form id="nearGoalForm" class="near-form"><div class="near-form-heading"><h3>次の目標を設定</h3><p>教科別に入力すると、合計を自動計算します。合計だけの入力もできます。</p></div><div class="near-basic"><label>目標名<input name="name" type="text" maxlength="100" placeholder="例：11月の東大実戦" required></label><label>試験日<input name="date" type="date" required></label></div><fieldset class="near-subject-fieldset"><legend>教科ごとの目標点 <small>任意</small></legend><div id="nearSubjectInputs" class="near-subject-grid"></div><p id="nearScienceHint" class="near-form-hint">理科は直接入力するか、物理・化学の両方を入力してください。両方ある場合は理科の入力値を合計に使います。</p></fieldset><div class="near-total-input"><label>目標合計点<input name="target" type="number" min="0" max="100000" step="any" required></label><p id="nearTargetHint" class="near-form-hint" aria-live="polite">教科別の入力がない場合は、合計点を直接入力できます。</p></div><div class="near-basic near-notes"><label>現在の課題<textarea name="issue" rows="3" maxlength="300" placeholder="今、点を伸ばしたいところ"></textarea></label><label>取り組み<textarea name="action" rows="3" maxlength="300" placeholder="試験までに取り組むこと"></textarea></label></div><div class="near-form-actions"><button type="submit">目標を保存</button><button type="button" id="nearGoalCancel" class="secondary" hidden>編集をキャンセル</button></div></form><p id="nearGoalStatus" role="status"></p><ul id="nearGoalList" class="near-goal-list"></ul><h3>ChatGPTに相談</h3><p>学習データは非公開リポジトリ study-atlas-data に暗号化せず保存され、ChatGPTも同じデータを参照します。GitHubの履歴に残ります。未保存の端末内変更はChatGPTから確認できません。</p><p>この端末の記録から相談文を作成します。内容を確認・編集してコピーし、ChatGPTに貼り付けてください。作成するだけではデータは送信されません。</p><button type="button" id="consultPrepare">相談文を作る</button><div id="consultOutput" hidden><label for="consultText">ChatGPTに渡す内容</label><textarea id="consultText" rows="15" style="display:block;width:100%;box-sizing:border-box" aria-describedby="consultStatus"></textarea><button type="button" id="consultCopy">相談文をコピー</button> <a href="https://chatgpt.com/" target="_blank" rel="noopener noreferrer">ChatGPTを開く</a></div><p id="consultStatus" role="status"></p><h3>最近の模試と学習時間</h3><div id="nearGoalFacts"></div></section>
@@ -814,16 +826,19 @@ function completeExamSets(records){
 }
 function deleteButton(x){const group=el('span','');const edit=el('button','編集','secondary');edit.type='button';edit.onclick=()=>beginScoreEdit(x.id);group.append(edit,document.createTextNode(' '));const button=el('button','削除','danger');button.type='button';button.onclick=()=>{if(confirm('この科目の記録を削除しますか？')){data.scores=data.scores.filter(y=>y.id!==x.id);save()}};group.append(button);return group}
 function completeSum(values){return values.length&&values.every(v=>typeof v==='number'&&Number.isFinite(v))?sumDecimal(values):null}
-function examRecordTotals(x){return {score:complete(x)?x.score:(typeof x.reportedScore==='number'?x.reportedScore:null),partial:!complete(x)&&typeof x.reportedScore==='number',average:averageValue(x),selfscore:selfScoreValue(x),feeling:x.feeling??null,max:x.max}}
+function examRecordTotals(x){return {score:complete(x)?x.score:(typeof x.reportedScore==='number'?x.reportedScore:null),partial:!complete(x)&&typeof x.reportedScore==='number',average:averageValue(x),selfscore:selfScoreValue(x),feeling:x.feeling??null,max:x.max,minutes:completeSum((x.questions||[]).map(q=>q.minutes))}}
 function questionTotals(questions){return {score:completeSum(questions.map(q=>q.score)),average:completeSum(questions.map(q=>q.average)),selfscore:completeSum(questions.map(q=>q.selfscore)),feeling:completeSum(questions.map(q=>q.feeling)),max:completeSum(questions.map(q=>q.max))}}
 function examGroups(records){const groups=[],order=formatSubjects();const sorted=[...records].sort((a,b)=>{const ai=order.indexOf(a.subject),bi=order.indexOf(b.subject);return (ai<0?99:ai)-(bi<0?99:bi)});for(const x of sorted){const qs=Array.isArray(x.questions)?x.questions:[];if(activeExamFormat==='secondary'&&x.subject==='理科'&&qs.length){const phys=qs.filter(q=>q.name.startsWith('物理')),chem=qs.filter(q=>q.name.startsWith('化学')),other=qs.filter(q=>!q.name.startsWith('物理')&&!q.name.startsWith('化学'));if(phys.length)groups.push({title:'物理',questions:phys,totals:questionTotals(phys),record:x});if(chem.length)groups.push({title:'化学',questions:chem,totals:questionTotals(chem),record:x});if(other.length)groups.push({title:'理科（その他）',questions:other,totals:questionTotals(other),record:x});if(!phys.length&&!chem.length&&!other.length)groups.push({title:'理科',questions:[],totals:examRecordTotals(x),record:x})}else{const parts=qs.length?qs:(Array.isArray(x.parts)?x.parts.map((v,i)=>({name:'大問'+(i+1),score:v,max:null})):[]);groups.push({title:x.subject,questions:parts,totals:examRecordTotals(x),record:x})}}return groups}
 function examCell(value){return value===null||value===undefined?'—':String(value)}
 function questionGoalLevel(subject,score,max,part=''){
-  if(activeExamFormat==='secondary'&&$('#classView').value==='class')return null;
+  if(!Number.isFinite(score)||score<0||score>max)return null;
+  return scoreLevelForThresholds(score,questionGoalThresholds(subject,max,part));
+}
+function questionGoalThresholds(subject,max,part=''){
+  if(activeExamFormat==='secondary'&&$('#classView').value==='class')return {};
   if(activeExamFormat==='secondary'&&subject==='理科')subject=/^(物理|化学)/.exec(part)?.[1]??subject;
   const subjectMax=formatMax()[subject];
-  if(!Number.isFinite(subjectMax)||!Number.isFinite(max)||max<=0||
-    !Number.isFinite(score)||score<0||score>max)return null;
+  if(!Number.isFinite(subjectMax)||!Number.isFinite(max)||max<=0)return {};
   const goals=scoreGoalFor(subject,activeExamFormat);
   const scienceGoals=activeExamFormat==='secondary'&&['物理','化学'].includes(subject)
     ?scoreGoalFor('理科','secondary'):{};
@@ -832,6 +847,10 @@ function questionGoalLevel(subject,score,max,part=''){
     const rate=Number.isFinite(goals[level])?goals[level]/subjectMax:scienceGoals[level]/goalMax.理科;
     if(Number.isFinite(rate))thresholds[level]=max*rate;
   }
+  return thresholds;
+}
+function scoreLevelForThresholds(score,thresholds){
+  if(!Number.isFinite(score))return null;
   const reached=threshold=>Number.isFinite(threshold)&&
     score+Number.EPSILON*Math.max(1,score,threshold)*4>=threshold;
   if(Number.isFinite(thresholds.floor)&&!reached(thresholds.floor))return 'below';
@@ -848,18 +867,37 @@ function applyExamGoal(cell,level){
   cell.setAttribute('aria-label',cell.textContent+'、'+label);
 }
 function achievedExamGoal(subject,score,max){
-  if(activeExamFormat==='secondary'&&$('#classView').value==='class')return null;
-  if(!Object.hasOwn(formatMax(),subject)&&subject!=='合計')return null;
+  return scoreLevelForThresholds(score,examGoalThresholds(subject,max));
+}
+function examGoalThresholds(subject,max){
+  if(activeExamFormat==='secondary'&&$('#classView').value==='class')return {};
+  if(!Object.hasOwn(formatMax(),subject)&&subject!=='合計')return {};
   const expected=subject==='合計'?formatTotal():formatMax()[subject];
   const historicCommonTotal=activeExamFormat==='common'&&subject==='合計'&&max===900;
-  if(!Number.isFinite(score)||(max!==expected&&!historicCommonTotal))return null;
-  const goals=scoreGoalFor(subject,activeExamFormat);
-  const threshold=level=>goals[level]*max/expected;
-  if(Number.isFinite(goals.floor)&&score<threshold('floor'))return 'below';
-  return ['ideal','target','floor'].find(key=>Number.isFinite(goals[key])&&score>=threshold(key))??null;
+  if(max!==expected&&!historicCommonTotal)return {};
+  if(activeExamFormat==='secondary'&&['物理','化学'].includes(subject))return questionGoalThresholds(subject,max);
+  return Object.fromEntries(Object.entries(scoreGoalFor(subject,activeExamFormat)).map(([key,value])=>[key,value*max/expected]));
 }
-function makeExamTable(heads,rows){const wrap=el('div','','table-wrap'),table=document.createElement('table'),thead=document.createElement('thead'),tr=document.createElement('tr');for(const title of heads){const th=el('th',title);th.scope='col';tr.append(th)}thead.append(tr);table.append(thead);const body=document.createElement('tbody');for(const row of rows){const tr=document.createElement('tr');if(row.total)tr.className='exam-total';row.cells.forEach((v,i)=>{const cell=el(i===0?'th':'td',examCell(v));if(i===0)cell.scope='row';if(i===1&&row.goalSubject){const level=achievedExamGoal(row.goalSubject,row.score,row.goalMax);if(level)applyExamGoal(cell,level)}if(i===1&&row.questionGoal)applyQuestionGoal(cell,row.questionGoal);else if(i===1&&!row.goalSummary&&typeof row.score==='number'&&typeof row.average==='number'){if(row.score>row.average){cell.className='score-above';cell.title='平均より上'}else if(row.score<row.average){cell.className='score-below';cell.title='平均より下'}}tr.append(cell)});body.append(tr)}table.append(body);wrap.append(table);return wrap}
-function examQuestionRows(questions,showFeeling,showTime,showTags,subject){const rows=[];for(const q of questions){const row={cells:[q.name,q.score,q.average,q.selfscore],score:q.score,average:q.average,questionGoal:questionGoalLevel(subject,q.score,q.max,q.name)};if(showFeeling)row.cells.push(q.feeling);row.cells.push(q.max);if(showTime)row.cells.push(q.minutes);if(showTags)row.cells.push((q.tags||[]).join('、')||'—');rows.push(row);for(const sub of q.subparts||[]){const cells=['　'+sub.name,sub.score,null,null];if(showFeeling)cells.push(null);cells.push(null);if(showTime)cells.push(null);if(showTags)cells.push(null);rows.push({cells,score:sub.score})}}return rows}
+function makeExamTable(heads,rows,compact=false){const wrap=el('div','','table-wrap'),table=document.createElement('table'),thead=document.createElement('thead'),tr=document.createElement('tr');if(compact)table.className='exam-points-table';for(const title of heads){const th=el('th',title);th.scope='col';tr.append(th)}thead.append(tr);table.append(thead);const body=document.createElement('tbody');for(const row of rows){const tr=document.createElement('tr');if(row.total)tr.className='exam-total';row.cells.forEach((v,i)=>{const cell=el(i===0?'th':'td',examCell(v));if(i===0){cell.scope='row';if(row.details?.length)cell.append(el('small',row.details.join('・'),'exam-row-details'))}if(i===1&&row.questionGoal)applyQuestionGoal(cell,row.questionGoal);else if(i===1&&row.totalGoal)applyExamGoal(cell,row.totalGoal);tr.append(cell)});body.append(tr)}table.append(body);wrap.append(table);return wrap}
+const examResultColumns=['得点 / 配点','所要時間（分）','死守','目標','理想'];
+const examThresholdFormat=new Intl.NumberFormat('ja-JP',{maximumFractionDigits:2});
+const examThresholdText=value=>Number.isFinite(value)?examThresholdFormat.format(value):null;
+function examResultRow(label,{score,max,minutes,feeling,partial},subject,{question='',total=false,tags=[]}={}){
+  const thresholds=question?questionGoalThresholds(subject,max,question):examGoalThresholds(subject,max);
+  const level=partial?null:scoreLevelForThresholds(score,thresholds);
+  const points=max==null?score:(score??'—')+' / '+max+(partial?' ※':'');
+  const cells=[label,points,minutes,...['floor','target','ideal'].map(key=>examThresholdText(thresholds[key]))];
+  const details=[...(feeling==null?[]:['感触 '+feeling]),...tags];
+  return {cells,total,details,questionGoal:question?level:null,totalGoal:question?null:level};
+}
+function examQuestionRows(questions,subject){
+  const rows=[];
+  for(const q of questions){
+    rows.push(examResultRow(q.name,q,subject,{question:q.name,tags:q.tags||[]}));
+    for(const sub of q.subparts||[])rows.push(examResultRow('　'+sub.name,{score:sub.score},null));
+  }
+  return rows;
+}
 // Cutoffs and averages from the University of Tokyo's first-stage selection.
 const commonTodaiBenchmarks={
   2021:{max:900,cutoffs:[699,629,534],averages:[789.12,764.47,757.92]},
@@ -900,13 +938,12 @@ function commonBenchmarkCard(record){
   card.append(sources);
   return card;
 }
-function examTotalRow(values,label,showFeeling,goalSubject=null){
+function examTotalRow(values,label,goalSubject=null){
   const score=values.some(x=>x.partial)?null:completeSum(values.map(x=>x.score));
-  const average=completeSum(values.map(x=>x.average)),max=completeSum(values.map(x=>x.max));
-  const cells=[label,score,average,completeSum(values.map(x=>x.selfscore))];
-  if(showFeeling)cells.push(completeSum(values.map(x=>x.feeling)));
-  cells.push(max);
-  return {cells,total:true,score,average,goalSummary:true,goalSubject,goalMax:max};
+  return examResultRow(label,{
+    score,max:completeSum(values.map(x=>x.max)),minutes:completeSum(values.map(x=>x.minutes)),
+    feeling:completeSum(values.map(x=>x.feeling))
+  },goalSubject,{total:true});
 }
 function todaiCommonTotals(records,values){
   const year=commonPastPaperYear(records[0]);
@@ -924,18 +961,22 @@ function todaiCommonTotals(records,values){
   }
   return {totals,full:subjects.every(subject=>records.some(record=>record.subject===subject))};
 }
-function renderExamResults(records){const root=$('#examResults');root.replaceChildren();if(!records.length){root.append(el('p',(activeExamFormat==='common'?'登録済みの試験はありません。':'全教科の得点、または全教科の自己採点がそろった試験はありません。'),'muted'));return}const removeExam=el('button','この試験の結果をすべて削除','danger');removeExam.type='button';removeExam.onclick=()=>{const ids=new Set(records.map(x=>x.id));const label=records[0].name+'（'+(records[0].date||'日付未設定')+'）';if(!confirm(label+'の結果 '+ids.size+'件をすべて削除しますか？'))return;data.scores=data.scores.filter(x=>!ids.has(x.id));save()};root.append(removeExam);const benchmark=commonBenchmarkCard(records[0]);if(benchmark)root.append(benchmark);const groups=examGroups(records),grid=el('div','','exam-grid');for(const group of groups){const box=el('article','','exam-card'),heading=el('h4',group.title);applySubjectAppearance(box,group.title);const headingRow=el('div','','exam-card-heading');const edit=el('button','✎','secondary paper-result-edit');edit.type='button';edit.title=group.title+'の結果を編集';edit.setAttribute('aria-label',edit.title);edit.onclick=()=>beginScoreEdit(group.record.id);headingRow.append(heading,edit);box.append(headingRow);const qs=group.questions,t=group.totals,showFeeling=qs.some(q=>q.feeling!=null)||t.feeling!=null,showTime=qs.some(q=>q.minutes!=null),showTags=qs.some(q=>(q.tags||[]).length);const headers=['大問','点数','平均','自己採点'];if(showFeeling)headers.push('感触');headers.push('配点');if(showTime)headers.push('時間（分）');if(showTags)headers.push('タグ');const rows=examQuestionRows(qs,showFeeling,showTime,showTags,group.title),cells=['計',t.partial?String(t.score)+' ※':t.score,t.average,t.selfscore];if(showFeeling)cells.push(t.feeling);cells.push(t.max);if(showTime)cells.push(null);if(showTags)cells.push(null);rows.push({cells,total:true,score:t.score,average:t.average,goalSummary:true,goalSubject:t.partial?null:group.title,goalMax:t.max});box.append(makeExamTable(headers,rows));if(!qs.length)box.append(el('p','大問別の記録はありません。','muted'));if(t.partial)box.append(el('p','※ 元の記録にある合計です。大問の一部は未入力です。','muted'));grid.append(box)}root.append(grid);
-const key=el('p','','exam-goal-legend');key.append(document.createTextNode('目標達成：'));for(const [level,label] of [['below','死守未達'],['floor','死守'],['target','目標'],['ideal','理想']]){const tag=el('span',label,'exam-goal-key goal-'+level);key.append(tag)}key.append(document.createTextNode(' 大問の得点は、教科の目標を大問の配点に換算して判定します。'));root.append(key);const summary=el('article','','exam-card exam-summary');summary.append(el('h4','科目別の集計'));const showFeeling=records.some(x=>x.feeling!=null),headers=['科目','点数','平均','自己採点'];if(showFeeling)headers.push('感触');headers.push('配点');const rows=[];for(const x of [...records].sort((a,b)=>formatSubjects().indexOf(a.subject)-formatSubjects().indexOf(b.subject))){const t=examRecordTotals(x),cells=[x.subject,t.partial?String(t.score)+' ※':t.score,t.average,t.selfscore];if(showFeeling)cells.push(t.feeling);cells.push(t.max);rows.push({cells,score:t.score,average:t.average,goalSummary:true,goalSubject:t.partial?null:x.subject,goalMax:t.max})}
+function renderExamResults(records){const root=$('#examResults');root.replaceChildren();if(!records.length){root.append(el('p',(activeExamFormat==='common'?'登録済みの試験はありません。':'全教科の得点、または全教科の自己採点がそろった試験はありません。'),'muted'));return}const removeExam=el('button','この試験の結果をすべて削除','danger');removeExam.type='button';removeExam.onclick=()=>{const ids=new Set(records.map(x=>x.id));const label=records[0].name+'（'+(records[0].date||'日付未設定')+'）';if(!confirm(label+'の結果 '+ids.size+'件をすべて削除しますか？'))return;data.scores=data.scores.filter(x=>!ids.has(x.id));save()};root.append(removeExam);const benchmark=commonBenchmarkCard(records[0]);if(benchmark)root.append(benchmark);const groups=examGroups(records),grid=el('div','','exam-grid');for(const group of groups){const box=el('article','','exam-card'),heading=el('h4',group.title);applySubjectAppearance(box,group.title);const headingRow=el('div','','exam-card-heading');const edit=el('button','✎','secondary paper-result-edit');edit.type='button';edit.title=group.title+'の結果を編集';edit.setAttribute('aria-label',edit.title);edit.onclick=()=>beginScoreEdit(group.record.id);headingRow.append(heading,edit);box.append(headingRow);const qs=group.questions,t=group.totals,rows=examQuestionRows(qs,group.title);
+rows.push(examResultRow('計',{...t,minutes:completeSum(qs.map(q=>q.minutes))},group.title,{total:true}));
+box.append(makeExamTable(['大問',...examResultColumns],rows,true));if(!qs.length)box.append(el('p','大問別の記録はありません。','muted'));if(t.partial)box.append(el('p','※ 元の記録にある合計です。大問の一部は未入力です。','muted'));grid.append(box)}root.append(grid);
+const key=el('p','','exam-goal-legend');key.append(document.createTextNode('目標達成：'));for(const [level,label] of [['below','死守未達'],['floor','死守'],['target','目標'],['ideal','理想']]){const tag=el('span',label,'exam-goal-key goal-'+level);key.append(tag)}key.append(document.createTextNode(' 大問の得点は、教科の目標を大問の配点に換算して判定します。'));root.append(key);const summary=el('article','','exam-card exam-summary');summary.append(el('h4','科目別の集計'));const headers=['科目',...examResultColumns];
+const rows=[...records].sort((a,b)=>formatSubjects().indexOf(a.subject)-formatSubjects().indexOf(b.subject))
+  .map(x=>examResultRow(x.subject,examRecordTotals(x),x.subject));
 const unique=new Set(records.map(x=>x.subject));
 if(unique.size===records.length){
   const values=records.map(examRecordTotals),full=resultSubjects().every(subject=>unique.has(subject));
   if(activeExamFormat==='common'){
     const todai=todaiCommonTotals(records,values);
-    rows.push(examTotalRow(values,full||todai.full?'単純合計':'単純合計（登録科目の計）',showFeeling,full||todai.full?'合計':null));
-    if(todai.totals.length)rows.push(examTotalRow(todai.totals,todai.full?'東大換算合計':'東大換算合計（登録科目の計）',showFeeling,todai.full?'合計':null));
-  }else rows.push(examTotalRow(values,full?'合計':'登録科目の計',showFeeling,full?'合計':null));
+    rows.push(examTotalRow(values,full||todai.full?'単純合計':'単純合計（登録科目の計）',full||todai.full?'合計':null));
+    if(todai.totals.length)rows.push(examTotalRow(todai.totals,todai.full?'東大換算合計':'東大換算合計（登録科目の計）',todai.full?'合計':null));
+  }else rows.push(examTotalRow(values,full?'合計':'登録科目の計',full?'合計':null));
 }
-summary.append(makeExamTable(headers,rows));if(activeExamFormat==='common'&&unique.size===records.length){
+summary.append(makeExamTable(headers,rows,true));if(activeExamFormat==='common'&&unique.size===records.length){
   summary.append(el('p','東大換算は英語Rを140点満点、英語Lを60点満点に換算します。','muted'));
 }
 if(unique.size!==records.length)summary.append(el('p','同じ科目が複数あるため、全体の合計は表示していません。','muted'));if(records.some(x=>examRecordTotals(x).partial))summary.append(el('p','※ 元の記録にある合計です。大問の一部は未入力です。','muted'));root.append(summary)}
