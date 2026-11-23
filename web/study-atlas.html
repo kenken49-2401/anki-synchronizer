@@ -229,8 +229,19 @@ th{font-size:11px;letter-spacing:.15px;color:#61786b;background:#f6f9f7}
   color:#244768;
 }
 .paper-match-row .paper-result-edit { min-width:32px; min-height:32px; padding:2px 6px; line-height:1; }
+.paper-match-row.has-paper-link { cursor:pointer; }
+.paper-question-link { color:inherit; text-decoration:underline; text-underline-offset:2px; }
+#paperTable .paper-cell.has-paper-link { position:relative; }
+#paperTable .paper-link-cover {
+  position:absolute; inset:0; padding:0 calc(3 * var(--paper-unit));
+  text-align:right; color:inherit; font-size:calc(11 * var(--paper-unit));
+  text-decoration:none; cursor:pointer;
+}
+#paperTable .paper-link-cover:focus-visible { outline:2px solid currentColor; outline-offset:-2px; }
+#paperTable .has-paper-link .paper-result-edit { position:relative; }
  #paperTopicIndex { margin:14px 0; padding:9px 10px; border:1px solid var(--line); border-radius:9px; }
 #paperTopicIndex summary { cursor:pointer; font-weight:650; overflow-wrap:anywhere; }
+#paperTopicIndex .paper-topic-counts { font-size:.86em; font-weight:500; }
 #paperTopicLists h3 { margin:14px 0 5px; }
 #paperTopicLists details { border-top:1px solid var(--line); padding:7px 0; }
 #paperTopicLists .table-wrap { margin:5px 0; }
@@ -1274,12 +1285,78 @@ function renderPaperMatches(active){
 function comparePaperQuestions(a,b){
   return Number(b.year)-Number(a.year)||a.question.localeCompare(b.question,'ja',{numeric:true});
 }
+// Public sources for the University of Tokyo's 前期日程.
+const paperTodaiMathPdfPages={
+  1976:[2,3,4,6,7,9],1977:[2,3,4,5,6,8],
+  1978:[2,3,4,5,6,7],1979:[2,3,4,5,6,7],1980:[2,3,4,5,6,7],
+};
+const paperTodaiArchive='https://toudainyuushi.com/wp-content/uploads/';
+const paperTodaiSciencePdfs={
+  2011:['2018/08/23-3.pdf','2018/08/24-3.pdf'],
+  2016:['2018/08/q2016butsuri-1.pdf','2018/08/q2016kagaku-1.pdf'],
+  2017:['2018/11/fc66aec1bb4244f9f2363c7bbbda1c1c.pdf','2018/11/85f072ca952d950eccc0a0df7666e423.pdf'],
+};
+const paperTodaiEnglishPdfs={
+  2011:'2018/08/27-3.pdf',2012:'2018/08/27-2.pdf',2013:'2018/08/27-1.pdf',
+  2014:'2018/08/27.pdf',2015:'2018/08/seigo.pdf',2016:'2018/08/q2016eigo-2.pdf',
+  2017:'2018/08/c2a7357e94f4735bbfe1f484f361fb74.pdf',
+  2018:'2018/08/0d6f021f705aa4d466f1c12a12fd107a.pdf',
+  2019:'2019/12/877ae7870ffea70c57163d28b49f6313.pdf',
+  2020:'2021/08/d65f8de42c0b94472888dbe125e2edbc.pdf',
+  2021:'2021/08/c581eef0c898b7830ed12f663bb7f6ac.pdf',
+};
+function paperProblemSource(row,question){
+  if(row.exam!=='東京大学 前期')return null;
+  const year=Number(row.year);
+  if(!Number.isInteger(year))return null;
+  const category=categoryFor(row.subject,question);
+  const label=year+'年度 東京大学 前期 '+category+' '+question.replace(/^(物理|化学)/,'');
+  if(category==='数学'&&/^[1-6]$/.test(question)){
+    if(year>=1981&&year<=2026)return {url:'https://evolton.jp/problems/tokyo/'+year+'/science/'+question+'/',label:label+'の問題を開く'};
+    const page=paperTodaiMathPdfPages[year]?.[Number(question)-1];
+    if(page)return {url:'https://tfurukawa-sci.com/data/utokyo_s_'+year+'_page.pdf#page='+page,label:label+'の問題PDFを開く'};
+  }
+  if(row.subject==='理科'){
+    const science=/^(物理|化学)([1-3])(?:Ⅰ|Ⅱ)?$/.exec(question);
+    if(!science)return null;
+    const physics=science[1]==='物理';
+    const pdf=paperTodaiSciencePdfs[year]?.[physics?0:1];
+    if(pdf)return {url:paperTodaiArchive+pdf,label:label+'を含む問題冊子を開く'};
+    if(year>=2003&&year<=2026)return {
+      url:'https://atelierfactory.jp/exam/u-tokyo/'+(physics?'physics':'chemistry')+'/'+year+'.html#q'+science[2],
+      label:label+'の問題を開く',
+    };
+  }
+  if(category==='英語'&&/^(?:[124](?:AB|[AB])?|[35])$/.test(question)){
+    const pdf=paperTodaiEnglishPdfs[year];
+    if(pdf)return {url:paperTodaiArchive+pdf,label:label+'を含む問題冊子を開く'};
+    if(question==='1A'&&((year>=2000&&year<=2010)||year===2022))return {
+      url:'https://tanakake-t-english.com/東大'+year+(year===2022?'-1a':'-1'),
+      label:label+'の問題を開く',
+    };
+    if(year>=2008&&year<=2026)return {
+      url:'https://www.toshin-kakomon.com/new_kakomon_db/university/0l/'+year,
+      label:year+'年度 東京大学の過去問データベースを開く（東進ログイン）',
+    };
+  }
+  return null;
+}
+function paperProblemLink(url,label,description,className){
+  const link=el('a',label,className);
+  link.href=url;
+  link.target='_blank';
+  link.rel='noopener noreferrer';
+  link.title=description;
+  link.setAttribute('aria-label',description+'（新しいタブ）');
+  return link;
+}
 function renderPaperQuestionList(table,questions){
-  const rows=questions.map(({paperId,year,question,state,difficulty,expectedMinutes,score,minutes})=>{
+  const rows=questions.map(({paperId,year,question,state,difficulty,expectedMinutes,score,minutes,problemUrl,problemLabel})=>{
     const time=Number(expectedMinutes);
     const duration=el('span',expectedMinutes===''?'—':timeSymbols(time)||time+'分','paper-match-time');
     if(expectedMinutes!=='')duration.title=time+'分';
-    return [year,question,difficulty||'—',duration,score===''?'—':score+'点',minutes===''?'—':minutes+'m',
+    const problem=problemUrl?paperProblemLink(problemUrl,question+' ↗',problemLabel,'paper-question-link'):question;
+    return [year,problem,difficulty||'—',duration,score===''?'—':score+'点',minutes===''?'—':minutes+'m',
       paperResultEditButton(paperId,year,question,state)];
   });
   tableRows(table,['年度','問題','難易度','目安','点数','実測','操作'],rows);
@@ -1290,6 +1367,14 @@ function renderPaperQuestionList(table,questions){
     row.classList.toggle('paper-review',state==='review');
     row.cells[0].classList.toggle('paper-year-highlight',highlightedPaperYears.has(Number(year)));
     row.cells[0].setAttribute('aria-label',year+'年度、'+(paperStatuses[state]||paperStatuses.new));
+    const link=row.querySelector('.paper-question-link');
+    if(link){
+      row.classList.add('has-paper-link');
+      row.addEventListener('click',event=>{
+        if(event.target.closest('a,button'))return;
+        if(!window.getSelection()?.toString())link.click();
+      });
+    }
   });
 }
 const paperTopicIndex=$('#paperTopicIndex');
@@ -1322,7 +1407,10 @@ function renderPaperTopicIndex(){
       if(!members.length)continue;
       root.append(el('h3',categories.length>1&&group&&category!=='数学'?category+' / '+group:group||category));
       for(const {key,tag,questions} of members){
-        const details=el('details',''),summary=el('summary',tag+'（'+questions.length+'問）');
+        const details=el('details',''),summary=el('summary',tag);
+        const correct=questions.filter(question=>question.state==='done').length;
+        const review=questions.filter(question=>question.state==='review').length;
+        summary.append(el('span','（'+questions.length+'問 · 正解 '+correct+' · 要復習 '+review+'）','paper-topic-counts'));
         const wrap=el('div','','table-wrap');
         details.dataset.key=key;
         details.append(summary,wrap);
@@ -1433,6 +1521,13 @@ function renderPapers(){
  td.dataset.paperId=row.id;
  td.dataset.question=name;
  td.dataset.tagCategory=categoryFor(subject.value,name);
+ const problem=paperProblemSource(row,name);
+ if(problem){
+   td.classList.add('has-paper-link');
+   td.dataset.problemUrl=problem.url;
+   td.dataset.problemLabel=problem.label;
+   td.append(paperProblemLink(problem.url,'↗',problem.label,'paper-link-cover'));
+ }
  const mathIndex=Number(name)-1;
  const mathReference=subject.value==='数学'&&Number.isInteger(mathIndex)&&mathIndex>=0&&mathIndex<6
    ?data.mathReference?.[String(row.year)]?.[mathIndex]:null;
@@ -1796,6 +1891,7 @@ window.addEventListener('atlas-theme-change',()=>{render();if(!$('#near-goals').
 for(const button of document.querySelectorAll('[data-exam-format-choice]'))button.onclick=()=>setExamFormat(button.dataset.examFormatChoice);
 showPage();reminders();setInterval(reminders,30000);setInterval(()=>{if(localDate()!==renderedTaskPlanDate)render()},30000);document.addEventListener('visibilitychange',()=>{if(!document.hidden&&localDate()!==renderedTaskPlanDate)render()});window.addEventListener('resize',()=>{if(!document.querySelector('#taskList .quantity-card'))render()});
 </script><script type="module" src="./study-cloud-ui.mjs"></script></body></html>
+
 
 
 
