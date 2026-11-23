@@ -1292,9 +1292,12 @@ const paperTodaiMathPdfPages={
 };
 const paperTodaiArchive='https://toudainyuushi.com/wp-content/uploads/';
 const paperTodaiSciencePdfs={
-  2011:['2018/08/23-3.pdf','2018/08/24-3.pdf'],
-  2016:['2018/08/q2016butsuri-1.pdf','2018/08/q2016kagaku-1.pdf'],
-  2017:['2018/11/fc66aec1bb4244f9f2363c7bbbda1c1c.pdf','2018/11/85f072ca952d950eccc0a0df7666e423.pdf'],
+  2011:{物理:['2018/08/23-3.pdf',2,4,6],化学:['2018/08/24-3.pdf',2,8,12]},
+  2016:{物理:['2018/08/q2016butsuri-1.pdf',4,10,16],化学:['2018/08/q2016kagaku-1.pdf',4,10,18]},
+  2017:{
+    物理:['2018/11/fc66aec1bb4244f9f2363c7bbbda1c1c.pdf',4,12,20],
+    化学:['2018/11/85f072ca952d950eccc0a0df7666e423.pdf',4,6,10],
+  },
 };
 const paperTodaiEnglishPdfs={
   2011:'2018/08/27-3.pdf',2012:'2018/08/27-2.pdf',2013:'2018/08/27-1.pdf',
@@ -1305,6 +1308,11 @@ const paperTodaiEnglishPdfs={
   2020:'2021/08/d65f8de42c0b94472888dbe125e2edbc.pdf',
   2021:'2021/08/c581eef0c898b7830ed12f663bb7f6ac.pdf',
 };
+const paperTodaiEarlyChemistryPages={2000:[1,3,6],2001:[1,4,7],2002:[1,4,7]};
+function paperTodaiShotoshaPdf(subject,year){
+  const folder=year>=2022&&year<=2024?'2024/04':'2020/03';
+  return 'https://shotosha.com/medical-school/wp-content/uploads/sites/4/'+folder+'/東京大学医学部_前期_'+subject+'過去問（'+year+'年度）.pdf';
+}
 function paperProblemSource(row,question){
   if(row.exam!=='東京大学 前期')return null;
   const year=Number(row.year);
@@ -1320,21 +1328,28 @@ function paperProblemSource(row,question){
     const science=/^(物理|化学)([1-3])(?:Ⅰ|Ⅱ)?$/.exec(question);
     if(!science)return null;
     const physics=science[1]==='物理';
-    const pdf=paperTodaiSciencePdfs[year]?.[physics?0:1];
-    if(pdf)return {url:paperTodaiArchive+pdf,label:label+'を含む問題冊子を開く'};
+    const problemNumber=Number(science[2]);
+    const pdf=paperTodaiSciencePdfs[year]?.[category];
+    if(pdf)return {url:paperTodaiArchive+pdf[0]+'#page='+pdf[problemNumber],label:label+'の問題PDFを開く'};
     if(year>=2003&&year<=2026)return {
       url:'https://atelierfactory.jp/exam/u-tokyo/'+(physics?'physics':'chemistry')+'/'+year+'.html#q'+science[2],
       label:label+'の問題を開く',
     };
+    const chemistryPages=paperTodaiEarlyChemistryPages[year];
+    if(chemistryPages){
+      const index=problemNumber-1;
+      const page=physics?1+2*index:chemistryPages[index];
+      return {url:paperTodaiShotoshaPdf(category,year)+'#page='+page,label:label+'の問題PDFを開く'};
+    }
   }
   if(category==='英語'&&/^(?:[124](?:AB|[AB])?|[35])$/.test(question)){
     const pdf=paperTodaiEnglishPdfs[year];
     if(pdf)return {url:paperTodaiArchive+pdf,label:label+'を含む問題冊子を開く'};
-    if(question==='1A'&&((year>=2000&&year<=2010)||year===2022))return {
-      url:'https://tanakake-t-english.com/東大'+year+(year===2022?'-1a':'-1'),
-      label:label+'の問題を開く',
+    if(year>=2000&&year<=2025)return {
+      url:paperTodaiShotoshaPdf(category,year),
+      label:label+'を含む問題冊子を開く',
     };
-    if(year>=2008&&year<=2026)return {
+    if(year===2026)return {
       url:'https://www.toshin-kakomon.com/new_kakomon_db/university/0l/'+year,
       label:year+'年度 東京大学の過去問データベースを開く（東進ログイン）',
     };
