@@ -14,6 +14,25 @@ import {
   dueByStudyDay,
 } from "../web/stats.mjs";
 
+test("groups card additions by calendar day in the selected timezone", () => {
+  const earlier = { id: 1, added_at: Date.parse("2026-11-24T14:59:00Z") };
+  const midnight = { id: 2, added_at: Date.parse("2026-11-24T15:00:00Z") };
+  const later = { id: 3, added_at: Date.parse("2026-11-25T04:00:00Z") };
+  const legacy = { id: 4 };
+  const invalid = { id: 5, added_at: 0 };
+  const cards = [legacy, earlier, later, midnight, invalid];
+
+  assert.deepEqual(groupCards(cards, "added", "Asia/Tokyo"), [
+    { name: "2026-11-25", cards: [later, midnight] },
+    { name: "2026-11-24", cards: [earlier] },
+    { name: "追加日不明", cards: [legacy, invalid] },
+  ]);
+  assert.deepEqual(groupCards(cards, "added", "UTC")[1], {
+    name: "2026-11-24",
+    cards: [earlier, midnight],
+  });
+});
+
 test("due filter uses Anki study day and excludes new, inactive and unknown cards", () => {
   const today = "2026-10-16";
   const cards = [

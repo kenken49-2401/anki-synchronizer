@@ -194,17 +194,29 @@ export function deckTree(cards) {
   );
 }
 
-export function groupCards(cards, mode = "none") {
-  if (!["deck", "folder"].includes(mode))
+export function groupCards(cards, mode = "none", timezone = "Asia/Tokyo") {
+  if (!["deck", "folder", "added"].includes(mode))
     return [{ name: "", cards: [...cards] }];
   const groups = new Map();
   for (const card of cards) {
-    const name = mode === "folder" ? card.deck.split("::")[0] : card.deck;
+    let name = card.deck;
+    if (mode === "folder") name = card.deck.split("::")[0];
+    if (mode === "added") {
+      const day = Number.isSafeInteger(card.added_at) && card.added_at > 0
+        ? dayKey(card.added_at, timezone)
+        : null;
+      name = day ?? "追加日不明";
+    }
     if (!groups.has(name)) groups.set(name, []);
     groups.get(name).push(card);
   }
   return [...groups]
-    .sort(([a], [b]) => a.localeCompare(b, "ja", { numeric: true }))
+    .sort(([a], [b]) => {
+      if (mode !== "added") return a.localeCompare(b, "ja", { numeric: true });
+      if (a === "追加日不明") return 1;
+      if (b === "追加日不明") return -1;
+      return b.localeCompare(a, "ja", { numeric: true });
+    })
     .map(([name, items]) => ({ name, cards: items }));
 }
 

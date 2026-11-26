@@ -96,7 +96,7 @@ const state = {
   deviceRemembered: false,
   ankiStats: null,
   sort: "default",
-  groupBy: ["none", "deck", "folder"].includes(
+  groupBy: ["none", "deck", "folder", "added"].includes(
     localStorage.getItem("atlas-grouping"),
   )
     ? localStorage.getItem("atlas-grouping")
@@ -895,6 +895,7 @@ function groupingSelect(id) {
     ["none", "一覧"],
     ["deck", "デッキごと"],
     ["folder", "親フォルダごと"],
+    ["added", "追加日ごと（新しい日から）"],
   ]
     .map(
       ([value, label]) =>
@@ -933,6 +934,9 @@ function cardsView() {
   <p class="data-note">${icon("check", 14)} 正解率：Again＝不正解、Hard / Good / Easy＝正解。未回答は「—」。フォルダはAnkiのデッキ／サブデッキに対応します。</p>`
   );
 }
+function groupSelectedCards(cards) {
+  return groupCards(cards, state.groupBy, state.timezone);
+}
 function selectedCards() {
   const zone = state.snapshot.source.timezone || state.timezone;
   const rollover = state.snapshot.source.rollover_hour ?? 4;
@@ -940,7 +944,7 @@ function selectedCards() {
   const cards = filterCards(visible, {...state,
     dueThrough: state.dueOnly ? dayKey(new Date(), zone, rollover) : null,
     dueTimezone: zone, dueRollover: rollover}, state.stats.byCard);
-  return groupCards(cards, state.groupBy).flatMap((g) => g.cards);
+  return groupSelectedCards(cards).flatMap((g) => g.cards);
 }
 function renderStudyCard(c, index) {
   const s = state.stats.byCard.get(c.id);
@@ -967,12 +971,12 @@ function cardResults() {
   );
   const shown = cards.slice(state.page * pageSize, (state.page + 1) * pageSize);
   const totals = new Map(
-    groupCards(cards, state.groupBy).map((g) => [g.name, g.cards.length]),
+    groupSelectedCards(cards).map((g) => [g.name, g.cards.length]),
   );
-  const content = groupCards(shown, state.groupBy)
+  const content = groupSelectedCards(shown)
     .map(
       (group) =>
-        `<section class="deck-group">${group.name ? `<h3 class="deck-group-heading">${icon("book", 18)}${esc(group.name.replaceAll("::", " / "))}<small>${group.cards.length} / ${totals.get(group.name)} 枚</small></h3>` : ""}${group.cards.map((c) => renderStudyCard(c, cards.indexOf(c) + 1)).join("")}</section>`,
+        `<section class="deck-group">${group.name ? `<h3 class="deck-group-heading">${icon(state.groupBy === "added" ? "calendar" : "book", 18)}${esc(group.name.replaceAll("::", " / "))}<small>${group.cards.length} / ${totals.get(group.name)} 枚</small></h3>` : ""}${group.cards.map((c) => renderStudyCard(c, cards.indexOf(c) + 1)).join("")}</section>`,
     )
     .join("");
   return `<div class="collection-heading"><div><span class="eyebrow">COLLECTION</span><h2>${esc((state.tag || (state.decks.length ? state.decks.join("・") : "すべてのカード")).replaceAll("::", " / "))}<span>${cards.length} 枚</span></h2></div><button class="text-button" id="toggle-all">${shown.length && shown.every((c) => state.expanded.has(c.id)) ? "答えをすべて隠す" : "答えをすべて表示"}</button></div><div class="cards-list">${cards.length ? content : '<div class="no-results">' + icon("search", 30) + "<h3>カードが見つかりませんでした</h3><p>検索語や絞り込みを変えてみてください。</p></div>"}</div>
@@ -1028,7 +1032,7 @@ function settings() {
   <div class="device-login-setting"><h3>回答の自動送信・手動同期</h3><p>このリポジトリに限定した fine-grained token を設定します。回答送信には Issues: Read and write、今すぐ同期には Actions: Read and write が必要です。Actions権限ではこのリポジトリの他のワークフローも実行できます。トークンは閲覧パスワードで暗号化し、この端末に保存します。同じサイト上のスクリプトはログイン中に利用できます。共有端末では設定しないでください。</p><form id="review-token-form"><label for="review-token">GitHubトークン</label><input id="review-token" type="password" autocomplete="off" required><button class="button subtle" type="submit">この端末に設定</button></form><button class="button subtle" id="review-token-remove">送信設定を解除</button><details><summary>送信結果を確認できなかった場合</summary><p>GitHubのIssuesとAnkiの履歴を確認してください。処理待ちの回答を取り消す場合はGitHubのIssueを閉じてください。確認後にのみ、この端末の重複防止を解除できます。</p><button class="button subtle" id="review-guards-clear">確認後、送信状態を解除</button></details></div>
   <dl class="connection-info"><div><dt>プロフィール</dt><dd>${esc(state.snapshot?.source.profile || "未設定")}</dd></div><div><dt>最終データ受信</dt><dd>${esc(syncLabel())}</dd></div><div><dt>接続方式</dt><dd>AnkiWeb / AnkiConnect → 暗号化Pages</dd></div></dl>
   <div class="info-box">PC停止中もGitHub ActionsがAnkiWebから定期取得します。学習した端末でAnkiWebへ同期してください。「表示を更新」は最後に公開されたデータを読み込みます。</div>
-  <div class="device-login-setting"><h3>この端末の自動ログイン</h3><p>${state.deviceRemembered ? "有効です。次回からパスワードなしで開きます。" : "保存されていません。"}</p><button class="button subtle" id="device-login" ${state.demo ? "disabled" : ""}>${state.deviceRemembered ? "この端末の自動ログインを解除" : "この端末で自動ログインを有効にする"}</button></div><label class="setting-label" for="settings-grouping">カードのまとめ方</label>${groupingSelect("settings-grouping")}<p class="muted small">親フォルダごとは最上位のデッキでまとめます。カード一覧でも切り替えられます。</p><label class="setting-label" for="timezone">集計タイムゾーン</label><select id="timezone">${[
+  <div class="device-login-setting"><h3>この端末の自動ログイン</h3><p>${state.deviceRemembered ? "有効です。次回からパスワードなしで開きます。" : "保存されていません。"}</p><button class="button subtle" id="device-login" ${state.demo ? "disabled" : ""}>${state.deviceRemembered ? "この端末の自動ログインを解除" : "この端末で自動ログインを有効にする"}</button></div><label class="setting-label" for="settings-grouping">カードのまとめ方</label>${groupingSelect("settings-grouping")}<p class="muted small">親フォルダごとは最上位のデッキでまとめます。追加日は下のタイムゾーンで区切ります。カード一覧でも切り替えられます。</p><label class="setting-label" for="timezone">集計タイムゾーン</label><select id="timezone">${[
     ["Asia/Tokyo", "日本（Asia/Tokyo）"],
     ["UTC", "UTC"],
     ["America/New_York", "ニューヨーク"],
@@ -1310,7 +1314,7 @@ function bindCards() {
 function exportCards() {
   const markdown =
     `# ${state.tag || state.decks.join("・") || "Anki カード一覧"}\n\n` +
-    groupCards(selectedCards(), state.groupBy)
+    groupSelectedCards(selectedCards())
       .map(
         (group) =>
           `${group.name ? `## ${group.name.replaceAll("::", " / ")}\n\n` : ""}` +
